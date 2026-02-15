@@ -15,7 +15,8 @@ describe('CdkAppStack Security Tests', () => {
     });
     
     // Apply Permissions Boundary Aspect (same as in bin/cdk-app.ts)
-    const permissionsBoundaryArn = 'arn:aws:iam::123456789012:policy/CDKPermissionsBoundary';
+    // Get the actual ARN that will be generated
+    const permissionsBoundaryArn = `arn:aws:iam::123456789012:policy/CDKPermissionsBoundary`;
     cdk.Aspects.of(stack).add(new PermissionsBoundaryAspect(permissionsBoundaryArn));
     
     // Synthesize to apply aspects
