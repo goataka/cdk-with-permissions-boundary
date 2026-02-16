@@ -13,21 +13,29 @@ CDKを安全に運用するための4つの主要なセキュリティ機能を�
 
 ## 🚀 クイックスタート
 
+### 管理者の初期セットアップ
+
 ```bash
-# リポジトリのクローン
-git clone https://github.com/goataka/cdk-with-permissions-boundary.git
-cd cdk-with-permissions-boundary/cdk-app
-
-# 依存関係のインストール
+# 1. セキュリティポリシーの作成（管理者のみ）
+cd cdk-with-permissions-boundary/cdk-setup
 npm install
-
-# ビルド
 npm run build
+cdk deploy
 
-# テスト実行
+# 2. Bootstrapの実行（管理者のみ）
+cdk bootstrap --qualifier pbdemo \
+  --toolkit-stack-name CDKToolkit-pbdemo \
+  aws://YOUR_ACCOUNT_ID/YOUR_REGION
+```
+
+### 開発者のアプリ開発
+
+```bash
+# 3. アプリケーションの開発とデプロイ（開発者）
+cd cdk-with-permissions-boundary/cdk-app
+npm install
+npm run build
 npm test
-
-# デプロイ（要：AWS認証情報）
 npx cdk deploy
 ```
 
@@ -36,17 +44,23 @@ npx cdk deploy
 ## 📂 プロジェクト構成
 
 ```
-cdk-app/
+cdk-setup/                              # 管理者が最初にデプロイ
+├── bin/
+│   └── cdk-setup.ts                    # セットアップエントリー
+└── lib/
+    └── cdk-setup-stack.ts              # Permissions Boundary + Deny Policy
+
+cdk-app/                                # 開発者がデプロイ
 ├── bin/
 │   └── cdk-app.ts                      # アプリエントリーポイント
 ├── lib/
 │   ├── cdk-app-stack.ts                # メインスタック
-│   ├── permissions-boundary-policy.ts  # Permissions Boundary
-│   ├── deny-policy.ts                  # IAM Deny Policy
+│   ├── permissions-boundary-policy.ts  # Permissions Boundary（参照用）
+│   ├── deny-policy.ts                  # IAM Deny Policy（参照用）
 │   └── security-aspects.ts             # CDK Aspects
 ├── test/
 │   └── cdk-app.test.ts                 # テスト（13個）
-└── cdk.json                            # CDK設定
+└── cdk.json                            # CDK設定（Qualifier: pbdemo）
 ```
 
 ## 📚 ドキュメント

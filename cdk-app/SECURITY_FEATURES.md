@@ -8,19 +8,24 @@
 
 ```mermaid
 graph TB
-    subgraph "ロール・責任者"
+    subgraph "人（Person）"
         Admin[👤 管理者<br/>Administrator]
         Dev[👨‍💻 開発者<br/>Developer]
     end
     
-    subgraph "初期セットアップ（管理者が実行）"
-        Bootstrap[🔧 Bootstrap実行<br/>cdk bootstrap]
-        PBCreate[📋 Permissions Boundary<br/>作成]
-        DenyCreate[🚫 Deny Policy<br/>作成]
-        QualifierConfig[⚙️ cdk.json<br/>Qualifier設定]
+    subgraph "ロール（Role）と制限"
+        AdminRole[🔑 管理者ロール<br/>制限: なし]
+        DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
     end
     
-    subgraph "CDK Bootstrap環境"
+    subgraph "初期セットアップスタック（管理者が作成）"
+        SetupStack[📦 cdk-setup Stack]
+        PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
+        DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+    end
+    
+    subgraph "Bootstrap環境（管理者が実行）"
+        Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo]
         BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
         S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
         ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
@@ -28,64 +33,101 @@ graph TB
     end
     
     subgraph "CDKアプリケーション（開発者が作成）"
+        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
         CDKApp[📱 CDK App<br/>bin/cdk-app.ts]
         CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
         Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
     end
     
-    subgraph "セキュリティポリシー（管理者が作成）"
-        PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
-        DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+    subgraph "PB制約範囲"
+        subgraph "デプロイされるリソース"
+            Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
+            S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
+            CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
+        end
     end
     
-    subgraph "デプロイされるリソース（PB制約内）"
-        Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
-        S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
-        CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
-    end
+    Admin -.所有.-> AdminRole
+    Dev -.所有.-> DevRole
     
-    Admin -->|1. Bootstrap実行| Bootstrap
-    Admin -->|2. Qualifier設定| QualifierConfig
+    Admin -->|1. Setup Stack作成| SetupStack
+    SetupStack -->|作成| PBPolicy
+    SetupStack -->|作成| DenyPolicy
+    
+    Admin -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
     Bootstrap --> BootstrapStack
     BootstrapStack --> S3Assets
     BootstrapStack --> ECRRepo
     BootstrapStack --> BootstrapRoles
     
-    Admin -->|3. スタックデプロイ| CDKStack
-    CDKStack -->|作成| PBCreate
-    CDKStack -->|作成| DenyCreate
-    PBCreate --> PBPolicy
-    DenyCreate --> DenyPolicy
-    
+    Dev -->|3. Qualifier設定| QualifierConfig
     Dev -->|4. アプリ開発| CDKApp
+    QualifierConfig -.参照.-> BootstrapStack
     CDKApp --> CDKStack
     CDKStack --> Aspects
-    
-    Aspects -.検証.-> Lambda
-    Aspects -.検証.-> S3Bucket
-    Aspects -.検証.-> CustomRole
-    
-    PBPolicy -.自動適用.-> Lambda
-    PBPolicy -.自動適用.-> CustomRole
-    DenyPolicy -.アタッチ.-> CustomRole
     
     Dev -->|5. デプロイ| Lambda
     Dev -->|5. デプロイ| S3Bucket
     Dev -->|5. デプロイ| CustomRole
     
-    QualifierConfig -.参照.-> BootstrapStack
+    Aspects -.検証.-> Lambda
+    Aspects -.検証.-> S3Bucket
+    Aspects -.検証.-> CustomRole
+    
+    PBPolicy -.参照元: Setup Stack.-> Lambda
+    PBPolicy -.参照元: Setup Stack.-> CustomRole
+    DenyPolicy -.参照元: Setup Stack.-> CustomRole
+    
     Lambda -.アクセス.-> S3Bucket
     
     style Admin fill:#FFE5E5
     style Dev fill:#E5F5FF
+    style AdminRole fill:#FFE5E5
+    style DevRole fill:#E5F5FF
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
+    style SetupStack fill:#FFE5E5
     style Aspects fill:#E5FFE5
     style QualifierConfig fill:#FFF5E5
     style Lambda fill:#F0F0F0
     style S3Bucket fill:#F0F0F0
     style CustomRole fill:#F0F0F0
+    
+    classDef pbBoundary stroke:#ff0000,stroke-width:3px,stroke-dasharray: 5 5
+    class Lambda,S3Bucket,CustomRole pbBoundary
 ```
+
+### ロールと制限の説明
+
+| ロール | 実行可能な操作 | 制限 | 目的 |
+|--------|--------------|------|------|
+| **管理者ロール** | ✅ Bootstrap実行<br/>✅ Setup Stack作成<br/>✅ Permissions Boundary作成<br/>✅ Deny Policy作成<br/>✅ 全てのAWS操作 | ❌ なし | 初期環境構築とセキュリティポリシー管理 |
+| **開発者ロール** | ✅ CDKアプリ開発<br/>✅ リソースデプロイ<br/>✅ cdk.json設定 | ❌ Bootstrap実行不可<br/>❌ Permissions Boundary変更不可<br/>❌ IAM操作制限（PB内のみ） | アプリケーション開発とデプロイ |
+
+### セットアップフロー
+
+1. **管理者が実行する初期セットアップ**
+   ```bash
+   # Step 1: Setup Stackをデプロイ（Permissions BoundaryとDeny Policy作成）
+   cd cdk-setup
+   cdk deploy
+   
+   # Step 2: Bootstrapを実行（Qualifier指定）
+   cdk bootstrap --qualifier pbdemo \
+     --toolkit-stack-name CDKToolkit-pbdemo \
+     aws://ACCOUNT_ID/REGION
+   ```
+
+2. **開発者が実行するアプリ開発**
+   ```bash
+   # Step 3: cdk.jsonにQualifierを設定
+   # "@aws-cdk/core:bootstrapQualifier": "pbdemo"
+   
+   # Step 4: アプリケーションをデプロイ
+   cd cdk-app
+   cdk deploy
+   # ※ 開発者はBootstrapを実行できません
+   ```
 
 ### IAM Role Boundary継承フロー
 
@@ -210,20 +252,42 @@ graph LR
 
 ## 実装ファイルへのリンク
 
-各セキュリティ機能の実装は以下のファイルで確認できます：
+### セットアップスタック（管理者が作成）
 
-- **[Permissions Boundary](lib/permissions-boundary-policy.ts)** - 権限の上限設定
-- **[Deny Policy](lib/deny-policy.ts)** - 脱獄防止ポリシー
+- **[Setup Stack](../cdk-setup/lib/cdk-setup-stack.ts)** - Permissions BoundaryとDeny Policyの作成
+- **[Setup Entry](../cdk-setup/bin/cdk-setup.ts)** - セットアップスタックのエントリーポイント
+
+### アプリケーションスタック（開発者が作成）
+
+- **[Permissions Boundary](lib/permissions-boundary-policy.ts)** - 権限の上限設定（参照用）
+- **[Deny Policy](lib/deny-policy.ts)** - 脱獄防止ポリシー（参照用）
 - **[Security Aspects](lib/security-aspects.ts)** - 設定検証Aspects
 - **[Main Stack](lib/cdk-app-stack.ts)** - サンプルスタック
 - **[App Entry](bin/cdk-app.ts)** - Aspects適用
+
+### セットアップフロー詳細
+
+1. **管理者: cdk-setupスタックをデプロイ**
+   - Permissions Boundary作成
+   - Deny Policy作成
+   - ARNをエクスポート
+
+2. **管理者: Bootstrapを実行（Qualifier指定）**
+   - `--qualifier pbdemo` を指定
+   - 開発者はこの操作を実行できない
+
+3. **開発者: cdk-appスタックをデプロイ**
+   - cdk.jsonでQualifierを参照
+   - cdk-setupで作成したポリシーを参照
+   - Aspectsでセキュリティチェック
 
 ## 1. Qualifier による環境分離
 
 ### 概要
 Qualifierは、CDKのブートストラップリソースに付けられる識別子です。これにより、同じAWSアカウント内で複数の独立した環境を構築できます。
 
-**設定者**: 管理者（cdk.jsonに設定、Bootstrapを実行）
+**設定者**: 管理者（cdk.jsonに設定、Bootstrapを実行）  
+**制限**: 開発者はBootstrapを実行できません
 
 ### 設定方法
 
