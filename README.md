@@ -65,13 +65,13 @@ cdk-app/                                # 開発者がデプロイ
 
 ## 📚 ドキュメント
 
-- **[SECURITY_FEATURES.md](cdk-app/SECURITY_FEATURES.md)** - セキュリティ機能の詳細説明、AWS構成図、実装例
+- **[SECURITY_FEATURES.md](SECURITY_FEATURES.md)** - セキュリティ機能の詳細説明、AWS構成図、実装例
 - **[SETUP_GUIDE.md](cdk-app/SETUP_GUIDE.md)** - 詳細なセットアップ手順、動作確認方法
 - **[サンプルコード](cdk-app/lib/)** - 各セキュリティ機能の実装
 
 ## 🔒 セキュリティ機能
 
-各機能の詳細は [SECURITY_FEATURES.md](cdk-app/SECURITY_FEATURES.md) を参照してください。
+各機能の詳細は [SECURITY_FEATURES.md](SECURITY_FEATURES.md) を参照してください。
 
 ### 1. Qualifier による環境分離
 カスタムQualifier `pbdemo` により、環境ごとに異なるリソースを作成し、物理的に分離します。

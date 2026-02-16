@@ -18,57 +18,58 @@ graph TB
         DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
     end
     
-    subgraph "初期セットアップスタック（管理者が作成）"
-        SetupStack[📦 cdk-setup Stack]
-        PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
-        DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+    subgraph "スタック"
+        subgraph "初期セットアップスタック"
+            SetupStack[📦 cdk-setup Stack]
+        end
+        
+        subgraph "Bootstrap環境"
+            BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
+        end
+        
+        subgraph "アプリケーションスタック"
+            CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
+        end
     end
     
-    subgraph "Bootstrap環境（管理者が実行）"
+    subgraph "リソース（管理者が作成）"
+        PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
+        DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
         Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo]
-        BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
         S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
         ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
         BootstrapRoles[👔 Bootstrap IAM Roles<br/>Deploy/Exec Roles]
     end
     
-    subgraph "CDKアプリケーション（開発者が作成）"
+    subgraph "リソース（開発者が作成）"
         QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
-        CDKApp[📱 CDK App<br/>bin/cdk-app.ts]
-        CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
         Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
+        Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
+        S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
+        CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
     end
     
-    subgraph "PB制約範囲"
-        subgraph "デプロイされるリソース"
-            Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
-            S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
-            CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
-        end
-    end
+    Admin -.assume.-> AdminRole
+    Dev -.assume.-> DevRole
     
-    Admin -.所有.-> AdminRole
-    Dev -.所有.-> DevRole
-    
-    Admin -->|1. Setup Stack作成| SetupStack
+    AdminRole -->|1. Setup Stack作成| SetupStack
     SetupStack -->|作成| PBPolicy
     SetupStack -->|作成| DenyPolicy
     
-    Admin -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
+    AdminRole -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
     Bootstrap --> BootstrapStack
     BootstrapStack --> S3Assets
     BootstrapStack --> ECRRepo
     BootstrapStack --> BootstrapRoles
     
-    Dev -->|3. Qualifier設定| QualifierConfig
-    Dev -->|4. アプリ開発| CDKApp
+    DevRole -->|3. Qualifier設定| QualifierConfig
+    DevRole -->|4. スタック開発| CDKStack
     QualifierConfig -.参照.-> BootstrapStack
-    CDKApp --> CDKStack
     CDKStack --> Aspects
     
-    Dev -->|5. デプロイ| Lambda
-    Dev -->|5. デプロイ| S3Bucket
-    Dev -->|5. デプロイ| CustomRole
+    DevRole -->|5. デプロイ| Lambda
+    DevRole -->|5. デプロイ| S3Bucket
+    DevRole -->|5. デプロイ| CustomRole
     
     Aspects -.検証.-> Lambda
     Aspects -.検証.-> S3Bucket
@@ -80,21 +81,24 @@ graph TB
     
     Lambda -.アクセス.-> S3Bucket
     
-    style Admin fill:#FFE5E5
-    style Dev fill:#E5F5FF
+    style Admin fill:#FFFFFF
+    style Dev fill:#FFFFFF
     style AdminRole fill:#FFE5E5
     style DevRole fill:#E5F5FF
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
     style SetupStack fill:#FFE5E5
-    style Aspects fill:#E5FFE5
-    style QualifierConfig fill:#FFF5E5
-    style Lambda fill:#F0F0F0
-    style S3Bucket fill:#F0F0F0
-    style CustomRole fill:#F0F0F0
-    
-    classDef pbBoundary stroke:#ff0000,stroke-width:3px,stroke-dasharray: 5 5
-    class Lambda,S3Bucket,CustomRole pbBoundary
+    style Bootstrap fill:#FFE5E5
+    style BootstrapStack fill:#FFE5E5
+    style S3Assets fill:#FFE5E5
+    style ECRRepo fill:#FFE5E5
+    style BootstrapRoles fill:#FFE5E5
+    style Aspects fill:#E5F5FF
+    style QualifierConfig fill:#E5F5FF
+    style CDKStack fill:#E5F5FF
+    style Lambda fill:#E5F5FF
+    style S3Bucket fill:#E5F5FF
+    style CustomRole fill:#E5F5FF
 ```
 
 ### ロールと制限の説明
