@@ -20,19 +20,21 @@ graph TB
     
     subgraph "CDK Setup Stack（管理者が作成）"
         SetupStack[📦 cdk-setup Stack]
+    end
+    
+    subgraph "Setup Stack リソース（管理者が作成）"
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
     end
     
     subgraph "Bootstrap（管理者が実行）"
         Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo]
-        BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
     end
     
     subgraph "CDK App Stack（開発者が作成）"
-        CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
+        CDKStack[📚 CDK Stack]
         QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
-        Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
+        Aspects[🔍 CDK Aspects]
     end
     
     subgraph "AWSリソース（管理者が作成）"
@@ -55,14 +57,13 @@ graph TB
     SetupStack -->|作成| DenyPolicy
     
     AdminRole -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
-    Bootstrap --> BootstrapStack
-    BootstrapStack --> S3Assets
-    BootstrapStack --> ECRRepo
-    BootstrapStack --> BootstrapRoles
+    Bootstrap --> S3Assets
+    Bootstrap --> ECRRepo
+    Bootstrap --> BootstrapRoles
     
     DevRole -->|3. Qualifier設定| QualifierConfig
     DevRole -->|4. スタック開発| CDKStack
-    QualifierConfig -.参照.-> BootstrapStack
+    QualifierConfig -.参照.-> Bootstrap
     CDKStack --> Aspects
     
     DevRole -->|5. デプロイ| Lambda
@@ -82,12 +83,11 @@ graph TB
     style Admin fill:#FFFFFF
     style Dev fill:#FFFFFF
     style AdminRole fill:#FFE5E5
-    style DevRole fill:#E5F5FF
+    style DevRole fill:#FFE5E5
     style SetupStack fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
-    style BootstrapStack fill:#FFE5E5
     style S3Assets fill:#FFE5E5
     style ECRRepo fill:#FFE5E5
     style BootstrapRoles fill:#FFE5E5
