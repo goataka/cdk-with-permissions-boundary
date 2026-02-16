@@ -2,14 +2,235 @@
 
 このドキュメントでは、実装された4つのセキュリティ機能について詳しく説明します。
 
+## 🏗️ AWS構成図
+
+### 全体アーキテクチャ
+
+```mermaid
+graph TB
+    subgraph "ロール・責任者"
+        Admin[👤 管理者<br/>Administrator]
+        Dev[👨‍💻 開発者<br/>Developer]
+    end
+    
+    subgraph "初期セットアップ（管理者が実行）"
+        Bootstrap[🔧 Bootstrap実行<br/>cdk bootstrap]
+        PBCreate[📋 Permissions Boundary<br/>作成]
+        DenyCreate[🚫 Deny Policy<br/>作成]
+        QualifierConfig[⚙️ cdk.json<br/>Qualifier設定]
+    end
+    
+    subgraph "CDK Bootstrap環境"
+        BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
+        S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
+        ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
+        BootstrapRoles[👔 Bootstrap IAM Roles<br/>Deploy/Exec Roles]
+    end
+    
+    subgraph "CDKアプリケーション（開発者が作成）"
+        CDKApp[📱 CDK App<br/>bin/cdk-app.ts]
+        CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
+        Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
+    end
+    
+    subgraph "セキュリティポリシー（管理者が作成）"
+        PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
+        DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+    end
+    
+    subgraph "デプロイされるリソース（PB制約内）"
+        Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
+        S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
+        CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
+    end
+    
+    Admin -->|1. Bootstrap実行| Bootstrap
+    Admin -->|2. Qualifier設定| QualifierConfig
+    Bootstrap --> BootstrapStack
+    BootstrapStack --> S3Assets
+    BootstrapStack --> ECRRepo
+    BootstrapStack --> BootstrapRoles
+    
+    Admin -->|3. スタックデプロイ| CDKStack
+    CDKStack -->|作成| PBCreate
+    CDKStack -->|作成| DenyCreate
+    PBCreate --> PBPolicy
+    DenyCreate --> DenyPolicy
+    
+    Dev -->|4. アプリ開発| CDKApp
+    CDKApp --> CDKStack
+    CDKStack --> Aspects
+    
+    Aspects -.検証.-> Lambda
+    Aspects -.検証.-> S3Bucket
+    Aspects -.検証.-> CustomRole
+    
+    PBPolicy -.自動適用.-> Lambda
+    PBPolicy -.自動適用.-> CustomRole
+    DenyPolicy -.アタッチ.-> CustomRole
+    
+    Dev -->|5. デプロイ| Lambda
+    Dev -->|5. デプロイ| S3Bucket
+    Dev -->|5. デプロイ| CustomRole
+    
+    QualifierConfig -.参照.-> BootstrapStack
+    Lambda -.アクセス.-> S3Bucket
+    
+    style Admin fill:#FFE5E5
+    style Dev fill:#E5F5FF
+    style PBPolicy fill:#FFE5E5
+    style DenyPolicy fill:#FFE5E5
+    style Aspects fill:#E5FFE5
+    style QualifierConfig fill:#FFF5E5
+    style Lambda fill:#F0F0F0
+    style S3Bucket fill:#F0F0F0
+    style CustomRole fill:#F0F0F0
+```
+
+### IAM Role Boundary継承フロー
+
+```mermaid
+sequenceDiagram
+    participant Admin as 👤 管理者
+    participant CDK as 📱 CDK App
+    participant Aspect as 🔍 Aspect
+    participant CFn as ☁️ CloudFormation
+    participant Role as 👔 IAM Role
+    participant PB as 🛡️ Permissions Boundary
+    
+    Admin->>CDK: 1. cdk deploy実行
+    CDK->>CDK: 2. Permissions Boundary Policy作成
+    CDK->>Aspect: 3. Aspect適用（全リソース走査）
+    
+    Note over Aspect: IAM Role検出
+    
+    Aspect->>Role: 4. PermissionsBoundary属性を追加
+    Note over Role: PermissionsBoundary:<br/>arn:aws:iam::*:policy/CDKPermissionsBoundary
+    
+    CDK->>CFn: 5. CloudFormationテンプレート送信
+    CFn->>Role: 6. IAM Role作成（PB付き）
+    CFn->>PB: 7. Permissions Boundaryを適用
+    
+    Note over Role,PB: Roleの権限 ∩ Permissions Boundary<br/>= 実際に使える権限
+    
+    Role-->>PB: 8. 権限チェック（常時）
+    Note over Role,PB: IAM操作は拒否される<br/>S3/Lambda操作のみ許可
+```
+
+### リソース作成時の制約チェック
+
+```mermaid
+graph LR
+    subgraph "開発者の操作"
+        DevCode[開発者がコード作成<br/>Lambda + IAM Role]
+    end
+    
+    subgraph "CDK Aspects検証"
+        AspectCheck1{S3暗号化?}
+        AspectCheck2{IAM Admin権限?}
+        AspectCheck3{ワイルドカード?}
+    end
+    
+    subgraph "Permissions Boundary制約"
+        PBCheck1{S3操作?}
+        PBCheck2{Lambda操作?}
+        PBCheck3{IAM操作?}
+    end
+    
+    subgraph "デプロイ結果"
+        Deploy[✅ デプロイ成功<br/>制約内のリソース]
+        Error[❌ デプロイ失敗<br/>制約違反]
+    end
+    
+    DevCode --> AspectCheck1
+    AspectCheck1 -->|Yes| AspectCheck2
+    AspectCheck1 -->|No| Error
+    AspectCheck2 -->|No| AspectCheck3
+    AspectCheck2 -->|Yes| Error
+    AspectCheck3 -->|Warning| PBCheck1
+    
+    PBCheck1 -->|許可| PBCheck2
+    PBCheck2 -->|許可| PBCheck3
+    PBCheck3 -->|拒否| Deploy
+    
+    style Deploy fill:#E5FFE5
+    style Error fill:#FFE5E5
+    style AspectCheck1 fill:#E5F5FF
+    style AspectCheck2 fill:#E5F5FF
+    style AspectCheck3 fill:#E5F5FF
+    style PBCheck1 fill:#FFE5E5
+    style PBCheck2 fill:#FFE5E5
+    style PBCheck3 fill:#FFE5E5
+```
+
+### セキュリティレイヤーの詳細
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 1: CDK Aspects（デプロイ前チェック）                   │
+│ 実行者: CDK CLI（開発者が cdk deploy 実行時）                 │
+├─────────────────────────────────────────────────────────────┤
+│ ✓ IAMロール検証（AdministratorAccess禁止）                    │
+│ ✓ S3セキュリティ検証（暗号化・バージョニング・パブリック）    │
+│ ✓ ワイルドカード権限の警告                                    │
+│ → 不合格の場合: デプロイ中断                                  │
+└─────────────────────────────────────────────────────────────┘
+                           ↓ デプロイ実行
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 2: Qualifier（環境分離）                               │
+│ 設定者: 管理者（cdk.jsonに設定）                              │
+├─────────────────────────────────────────────────────────────┤
+│ ✓ カスタムQualifier "pbdemo" を使用                          │
+│ ✓ Bootstrap環境を物理的に分離                                │
+│ ✓ 環境ごとに異なるS3/ECR/IAMリソース                         │
+│ → 環境間の干渉を防止                                         │
+└─────────────────────────────────────────────────────────────┘
+                           ↓ リソース作成
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: Permissions Boundary（権限の上限）                  │
+│ 作成者: 管理者（初回デプロイ時に作成）                        │
+│ 適用者: CDK Aspects（全IAMロールに自動適用）                  │
+├─────────────────────────────────────────────────────────────┤
+│ 許可: S3, Lambda, CloudWatch Logs, DynamoDB                  │
+│ 拒否: IAM操作（CreatePolicy, AttachRolePolicy等）            │
+│ → 過度な権限付与を防止                                       │
+└─────────────────────────────────────────────────────────────┘
+                           ↓ 実行時
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 4: IAM Deny Policy（脱獄防止）                         │
+│ 作成者: 管理者（初回デプロイ時に作成）                        │
+│ 適用者: 開発者（必要なRoleにアタッチ）                        │
+├─────────────────────────────────────────────────────────────┤
+│ ✓ Permissions Boundaryの削除・変更を拒否                     │
+│ ✓ セキュリティポリシーの変更を拒否                           │
+│ ✓ セキュリティグループの全開放(0.0.0.0/0)を拒否             │
+│ → 権限昇格（脱獄）を防止                                     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+## 実装ファイルへのリンク
+
+各セキュリティ機能の実装は以下のファイルで確認できます：
+
+- **[Permissions Boundary](lib/permissions-boundary-policy.ts)** - 権限の上限設定
+- **[Deny Policy](lib/deny-policy.ts)** - 脱獄防止ポリシー
+- **[Security Aspects](lib/security-aspects.ts)** - 設定検証Aspects
+- **[Main Stack](lib/cdk-app-stack.ts)** - サンプルスタック
+- **[App Entry](bin/cdk-app.ts)** - Aspects適用
+
 ## 1. Qualifier による環境分離
 
 ### 概要
 Qualifierは、CDKのブートストラップリソースに付けられる識別子です。これにより、同じAWSアカウント内で複数の独立した環境を構築できます。
 
+**設定者**: 管理者（cdk.jsonに設定、Bootstrapを実行）
+
 ### 設定方法
 
 #### cdk.json での設定
+
+**ファイル**: [`cdk.json`](cdk.json)
+
 ```json
 {
   "context": {
@@ -18,7 +239,8 @@ Qualifierは、CDKのブートストラップリソースに付けられる識�
 }
 ```
 
-#### ブートストラップコマンド
+#### ブートストラップコマンド（管理者が実行）
+
 ```bash
 cdk bootstrap \
   --qualifier pbdemo \
@@ -28,12 +250,12 @@ cdk bootstrap \
 
 ### 作成されるリソース
 
-| リソースタイプ | デフォルト名 | カスタムQualifier名 |
-|--------------|------------|-------------------|
-| S3バケット | cdk-hnb659fds-assets-{account}-{region} | cdk-**pbdemo**-assets-{account}-{region} |
-| ECRリポジトリ | cdk-hnb659fds-container-assets-{account}-{region} | cdk-**pbdemo**-container-assets-{account}-{region} |
-| IAMロール（デプロイ用） | cdk-hnb659fds-deploy-role-{account}-{region} | cdk-**pbdemo**-deploy-role-{account}-{region} |
-| IAMロール（実行用） | cdk-hnb659fds-cfn-exec-role-{account}-{region} | cdk-**pbdemo**-cfn-exec-role-{account}-{region} |
+| リソースタイプ | デフォルト名 | カスタムQualifier名 | 作成者 |
+|--------------|------------|-------------------|--------|
+| S3バケット | cdk-hnb659fds-assets-{account}-{region} | cdk-**pbdemo**-assets-{account}-{region} | 管理者 |
+| ECRリポジトリ | cdk-hnb659fds-container-assets-{account}-{region} | cdk-**pbdemo**-container-assets-{account}-{region} | 管理者 |
+| IAMロール（デプロイ用） | cdk-hnb659fds-deploy-role-{account}-{region} | cdk-**pbdemo**-deploy-role-{account}-{region} | 管理者 |
+| IAMロール（実行用） | cdk-hnb659fds-cfn-exec-role-{account}-{region} | cdk-**pbdemo**-cfn-exec-role-{account}-{region} | 管理者 |
 
 ### 利用シーン
 
@@ -67,10 +289,17 @@ cdk bootstrap \
 ### 概要
 Permissions Boundaryは、IAMロールやユーザーが持つことができる権限の上限を定義します。どんな権限を付与しても、Permissions Boundaryで許可されていない操作は実行できません。
 
+**作成者**: 管理者（初回スタックデプロイ時に自動作成）  
+**適用者**: CDK Aspects（全IAMロールに自動適用）
+
+### 実装ファイル
+
+**[`lib/permissions-boundary-policy.ts`](lib/permissions-boundary-policy.ts)** - Permissions Boundaryポリシーの定義
+
 ### 実装例
 
 ```typescript
-// lib/permissions-boundary-policy.ts
+// lib/permissions-boundary-policy.ts より抜粋
 const permissionsBoundary = new iam.ManagedPolicy(this, 'PermissionsBoundary', {
   managedPolicyName: 'CDKPermissionsBoundary',
   statements: [
@@ -98,6 +327,37 @@ const permissionsBoundary = new iam.ManagedPolicy(this, 'PermissionsBoundary', {
     }),
   ],
 });
+```
+
+完全な実装は [`lib/permissions-boundary-policy.ts`](lib/permissions-boundary-policy.ts) を参照してください。
+
+### Aspectsによる自動適用
+
+**[`lib/security-aspects.ts`](lib/security-aspects.ts)** - PermissionsBoundaryAspectの実装
+
+```typescript
+// lib/security-aspects.ts より抜粋
+export class PermissionsBoundaryAspect implements cdk.IAspect {
+  constructor(private readonly permissionsBoundaryArn: string) {}
+
+  public visit(node: IConstruct): void {
+    if (node instanceof iam.Role) {
+      const cfnRole = node.node.defaultChild as iam.CfnRole;
+      cfnRole.permissionsBoundary = this.permissionsBoundaryArn;
+    }
+  }
+}
+```
+
+**[`bin/cdk-app.ts`](bin/cdk-app.ts)** - Aspectsの適用
+
+```typescript
+// bin/cdk-app.ts より抜粋
+const permissionsBoundaryArn = process.env.PERMISSIONS_BOUNDARY_ARN || 
+  `arn:aws:iam::${process.env.CDK_DEFAULT_ACCOUNT}:policy/CDKPermissionsBoundary`;
+
+cdk.Aspects.of(stack).add(new PermissionsBoundaryAspect(permissionsBoundaryArn));
+```
 ```
 
 ### 権限の組み合わせ例
@@ -195,10 +455,17 @@ statements: [
 ### 概要
 IAM Denyポリシーは、明示的な拒否ルールを定義し、Permissions Boundary自体の変更や削除を防ぎます。これにより「脱獄」（権限制限の回避）を防止します。
 
+**作成者**: 管理者（初回スタックデプロイ時に自動作成）  
+**適用者**: 開発者（必要なIAMロールにアタッチ）
+
+### 実装ファイル
+
+**[`lib/deny-policy.ts`](lib/deny-policy.ts)** - Deny Policyの定義
+
 ### 実装例
 
 ```typescript
-// lib/deny-policy.ts
+// lib/deny-policy.ts より抜粋
 const denyPolicy = new iam.ManagedPolicy(this, 'SecurityDenyPolicy', {
   managedPolicyName: 'CDKSecurityDenyPolicy',
   statements: [
@@ -291,11 +558,21 @@ conditions: {
 ### 概要
 CDK Aspectsは、スタック内のすべてのリソースを走査し、設定ミスやセキュリティ問題を自動検出します。
 
+**実行者**: CDK CLI（開発者が `cdk deploy` 実行時）  
+**検証タイミング**: デプロイ前（CloudFormationテンプレート生成時）
+
+### 実装ファイル
+
+**[`lib/security-aspects.ts`](lib/security-aspects.ts)** - 3つのAspectsクラスを定義
+
 ### 実装例
 
 #### IAMロールの検証
+
+**[`lib/security-aspects.ts`](lib/security-aspects.ts)** より抜粋
+
 ```typescript
-// lib/security-aspects.ts
+// lib/security-aspects.ts より抜粋
 export class IamRoleValidationAspect implements cdk.IAspect {
   public visit(node: IConstruct): void {
     if (node instanceof iam.Role) {
@@ -327,6 +604,9 @@ export class IamRoleValidationAspect implements cdk.IAspect {
 ```
 
 #### S3セキュリティの検証
+
+**[`lib/security-aspects.ts`](lib/security-aspects.ts)** より抜粋
+
 ```typescript
 export class S3SecurityAspect implements cdk.IAspect {
   public visit(node: IConstruct): void {
@@ -412,6 +692,40 @@ export class TagValidationAspect implements cdk.IAspect {
 
 // Aspectの適用
 cdk.Aspects.of(app).add(new TagValidationAspect());
+```
+
+### Aspectsの適用方法
+
+**[`bin/cdk-app.ts`](bin/cdk-app.ts)** - Aspectsの適用
+
+```typescript
+// bin/cdk-app.ts より抜粋
+// すべてのIAMロールにPermissions Boundaryを適用
+cdk.Aspects.of(stack).add(new PermissionsBoundaryAspect(permissionsBoundaryArn));
+
+// IAMロール検証Aspectの適用
+cdk.Aspects.of(stack).add(new IamRoleValidationAspect());
+
+// S3セキュリティ検証Aspectの適用
+cdk.Aspects.of(stack).add(new S3SecurityAspect());
+```
+
+### 検証結果の例
+
+実際のスタック実装は **[`lib/cdk-app-stack.ts`](lib/cdk-app-stack.ts)** を参照してください。
+
+#### 良い例（エラーなし）
+
+**[`lib/cdk-app-stack.ts`](lib/cdk-app-stack.ts)** より抜粋
+
+```typescript
+const bucket = new s3.Bucket(this, 'SecureBucket', {
+  encryption: s3.BucketEncryption.S3_MANAGED,  // ✓
+  versioned: true,                              // ✓
+  blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,  // ✓
+});
+
+// cdk synth の結果: エラーなし ✓
 ```
 
 ## セキュリティレイヤーの組み合わせ
