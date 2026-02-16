@@ -18,32 +18,30 @@ graph TB
         DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
     end
     
-    subgraph "スタック"
-        subgraph "初期セットアップスタック"
-            SetupStack[📦 cdk-setup Stack]
-        end
-        
-        subgraph "Bootstrap環境"
-            BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
-        end
-        
-        subgraph "アプリケーションスタック"
-            CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
-        end
-    end
-    
-    subgraph "リソース（管理者が作成）"
+    subgraph "CDK Setup Stack（管理者が作成）"
+        SetupStack[📦 cdk-setup Stack]
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+    end
+    
+    subgraph "Bootstrap（管理者が実行）"
         Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo]
+        BootstrapStack[📦 Bootstrap Stack<br/>CDKToolkit-pbdemo]
+    end
+    
+    subgraph "CDK App Stack（開発者が作成）"
+        CDKStack[📚 CDK Stack<br/>lib/cdk-app-stack.ts]
+        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
+        Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
+    end
+    
+    subgraph "AWSリソース（管理者が作成）"
         S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
         ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
         BootstrapRoles[👔 Bootstrap IAM Roles<br/>Deploy/Exec Roles]
     end
     
-    subgraph "リソース（開発者が作成）"
-        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
-        Aspects[🔍 CDK Aspects<br/>lib/security-aspects.ts]
+    subgraph "AWSリソース（開発者が作成）"
         Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
         S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
         CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
@@ -85,17 +83,17 @@ graph TB
     style Dev fill:#FFFFFF
     style AdminRole fill:#FFE5E5
     style DevRole fill:#E5F5FF
+    style SetupStack fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
-    style SetupStack fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
     style BootstrapStack fill:#FFE5E5
     style S3Assets fill:#FFE5E5
     style ECRRepo fill:#FFE5E5
     style BootstrapRoles fill:#FFE5E5
-    style Aspects fill:#E5F5FF
-    style QualifierConfig fill:#E5F5FF
     style CDKStack fill:#E5F5FF
+    style QualifierConfig fill:#E5F5FF
+    style Aspects fill:#E5F5FF
     style Lambda fill:#E5F5FF
     style S3Bucket fill:#E5F5FF
     style CustomRole fill:#E5F5FF
