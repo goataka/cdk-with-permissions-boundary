@@ -18,6 +18,9 @@
   },
   "context": {
     "@aws-cdk/core:bootstrapQualifier": "pbdemo",
+    "@aws-cdk/core:permissionsBoundary": {
+      "name": "CDKPermissionsBoundary"
+    },
     "@aws-cdk/aws-signer:signingProfileNamePassedToCfn": true,
     "@aws-cdk/aws-ecs-patterns:secGroupsDisablesImplicitOpenListener": true,
     "@aws-cdk/aws-lambda:recognizeLayerVersion": true,

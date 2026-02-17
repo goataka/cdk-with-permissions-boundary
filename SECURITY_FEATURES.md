@@ -11,9 +11,6 @@ graph TB
     Admin[👤 管理者<br/>Administrator]
     Dev[👨‍💻 開発者<br/>Developer]
     
-    AdminRole[🔑 管理者ロール<br/>制限: なし]
-    DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
-    
     subgraph "CDK Setup Stack（管理者が作成）"
         SetupStack[📦 CDK Setup Stack]
     end
@@ -22,7 +19,8 @@ graph TB
         SetupCfn[☁️ Setup CloudFormation]
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
-        DevRoleResource[🔑 開発者ロール]
+        DeployRole[🔑 Deploy Role<br/>制限: Boundary適用<br/>Bootstrap不可]
+        ExecRole[🔑 CloudFormation Exec Role<br/>制限: Boundary適用]
     end
     
     subgraph "Bootstrap（管理者が実行）"
@@ -50,25 +48,26 @@ graph TB
         CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
     end
     
-    Admin -.assume.-> AdminRole
-    Dev -.assume.-> DevRoleResource
+    Dev -.assume.-> DeployRole
     
-    AdminRole -->|1. Setup Stack作成| SetupStack
+    Admin -->|1. Setup Stack作成| SetupStack
     SetupStack -->|デプロイ| SetupCfn
     SetupCfn -->|作成| PBPolicy
     SetupCfn -->|作成| DenyPolicy
-    SetupCfn -->|作成| DevRoleResource
+    SetupCfn -->|作成| DeployRole
+    SetupCfn -->|作成| ExecRole
     
-    AdminRole -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
+    Admin -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
     Bootstrap -->|デプロイ| BootstrapCfn
     BootstrapCfn -->|作成| S3Assets
     BootstrapCfn -->|作成| ECRRepo
     BootstrapCfn -->|作成| BootstrapRoles
     
-    DevRoleResource -->|3. Qualifier設定| QualifierConfig
-    DevRoleResource -->|4. スタック開発| AppStack
+    Dev -->|3. Qualifier設定| QualifierConfig
+    QualifierConfig -.指定.-> BootstrapCfn
+    DeployRole -->|4. スタック開発| AppStack
     AppStack -.参照.-> QualifierConfig
-    AppStack -->|デプロイ| AppCfn
+    ExecRole -->|デプロイ| AppCfn
     AppStack -.検証.-> Aspects
     
     AppCfn -->|5. リソース作成| Lambda
@@ -88,12 +87,12 @@ graph TB
     
     style Admin fill:#FFFFFF
     style Dev fill:#FFFFFF
-    style AdminRole fill:#FFFFFF
     style SetupStack fill:#FFE5E5
     style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
-    style DevRoleResource fill:#FFE5E5
+    style DeployRole fill:#FFE5E5
+    style ExecRole fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
     style BootstrapCfn fill:#FFE5E5
     style S3Assets fill:#FFE5E5
@@ -113,8 +112,8 @@ graph TB
 
 | ロール | 実行可能な操作 | 制限 | 目的 |
 |--------|--------------|------|------|
-| **管理者ロール** | ✅ Bootstrap実行<br/>✅ Setup Stack作成<br/>✅ Permissions Boundary作成<br/>✅ Deny Policy作成<br/>✅ 全てのAWS操作 | ❌ なし | 初期環境構築とセキュリティポリシー管理 |
-| **開発者ロール** | ✅ CDKアプリ開発<br/>✅ リソースデプロイ<br/>✅ cdk.json設定 | ❌ Bootstrap実行不可<br/>❌ Permissions Boundary変更不可<br/>❌ IAM操作制限（PB内のみ） | アプリケーション開発とデプロイ |
+| **Deploy Role** | ✅ CDKアプリ開発<br/>✅ CloudFormation実行依頼<br/>✅ cdk.json設定 | ❌ Bootstrap実行不可<br/>❌ Permissions Boundary変更不可<br/>❌ IAM操作制限（PB内のみ） | アプリケーション開発とデプロイ依頼 |
+| **CloudFormation Exec Role** | ✅ CloudFormation経由のリソース作成<br/>✅ Permissions Boundary内のIAM操作 | ❌ Permissions Boundary変更不可<br/>❌ Boundary外の操作不可 | CloudFormationによる実際のリソース作成 |
 
 ### セットアップフロー
 
