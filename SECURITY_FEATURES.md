@@ -16,6 +16,7 @@ graph TB
     
     subgraph "CDK Setup Stack（管理者が作成）"
         SetupStack[📦 CDK Setup Stack]
+        SetupCfn[☁️ CDK Setup CloudFormation]
     end
     
     subgraph "Setup Stack リソース（管理者が作成）"
@@ -25,11 +26,13 @@ graph TB
     end
     
     subgraph "Bootstrap（管理者が実行）"
-        Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo]
+        Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo<br/>--custom-permissions-boundary]
+        BootstrapCfn[☁️ CDK Bootstrap CloudFormation]
     end
     
     subgraph "CDK App Stack（開発者が作成）"
         AppStack[📚 CDK App Stack]
+        AppCfn[☁️ CDK App CloudFormation]
         QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
         Aspects[🔍 CDK Aspects]
     end
@@ -48,27 +51,31 @@ graph TB
     end
     
     Admin -.assume.-> AdminRole
-    Dev -.assume.-> DevRole
+    Dev -.assume.-> DevRoleResource
     
     AdminRole -->|1. Setup Stack作成| SetupStack
-    SetupStack -->|作成| PBPolicy
-    SetupStack -->|作成| DenyPolicy
-    SetupStack -->|作成| DevRoleResource
+    SetupStack -->|デプロイ| SetupCfn
+    SetupCfn -->|作成| PBPolicy
+    SetupCfn -->|作成| DenyPolicy
+    SetupCfn -->|作成| DevRoleResource
     
     AdminRole -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
-    Bootstrap -->|作成| S3Assets
-    Bootstrap -->|作成| ECRRepo
-    Bootstrap -->|作成| BootstrapRoles
+    Bootstrap -->|デプロイ| BootstrapCfn
+    BootstrapCfn -->|作成| S3Assets
+    BootstrapCfn -->|作成| ECRRepo
+    BootstrapCfn -->|作成| BootstrapRoles
     
+    DevRoleResource -.assume.-> DevRole
     DevRole -->|3. Qualifier設定| QualifierConfig
     DevRole -->|4. スタック開発| AppStack
     QualifierConfig -.参照.-> Bootstrap
+    AppStack -->|デプロイ| AppCfn
     AppStack --> Aspects
     
-    AppStack -->|5. リソース作成| Lambda
-    AppStack -->|5. リソース作成| LambdaRole
-    AppStack -->|5. リソース作成| S3Bucket
-    AppStack -->|5. リソース作成| CustomRole
+    AppCfn -->|5. リソース作成| Lambda
+    AppCfn -->|5. リソース作成| LambdaRole
+    AppCfn -->|5. リソース作成| S3Bucket
+    AppCfn -->|5. リソース作成| CustomRole
     
     Aspects -.検証.-> Lambda
     Aspects -.検証.-> LambdaRole
@@ -87,14 +94,17 @@ graph TB
     style AdminRole fill:#FFFFFF
     style DevRole fill:#FFE5E5
     style SetupStack fill:#FFE5E5
+    style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
     style DevRoleResource fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
+    style BootstrapCfn fill:#FFE5E5
     style S3Assets fill:#FFE5E5
     style ECRRepo fill:#FFE5E5
     style BootstrapRoles fill:#FFE5E5
     style AppStack fill:#E5F5FF
+    style AppCfn fill:#E5F5FF
     style QualifierConfig fill:#E5F5FF
     style Aspects fill:#E5F5FF
     style Lambda fill:#E5F5FF
