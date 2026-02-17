@@ -39,7 +39,7 @@ npm test
 npx cdk deploy
 ```
 
-詳細なセットアップ手順は [SETUP_GUIDE.md](cdk-app/SETUP_GUIDE.md) を参照してください。
+詳細なセットアップ手順は [SETUP_GUIDE.md](SETUP_GUIDE.md) を参照してください。
 
 ## 📂 プロジェクト構成
 
@@ -66,7 +66,7 @@ cdk-app/                                # 開発者がデプロイ
 ## 📚 ドキュメント
 
 - **[SECURITY_FEATURES.md](SECURITY_FEATURES.md)** - セキュリティ機能の詳細説明、AWS構成図、実装例
-- **[SETUP_GUIDE.md](cdk-app/SETUP_GUIDE.md)** - 詳細なセットアップ手順、動作確認方法
+- **[SETUP_GUIDE.md](SETUP_GUIDE.md)** - 詳細なセットアップ手順、動作確認方法
 - **[サンプルコード](cdk-app/lib/)** - 各セキュリティ機能の実装
 
 ## 🔒 セキュリティ機能

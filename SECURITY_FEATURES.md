@@ -8,23 +8,20 @@
 
 ```mermaid
 graph TB
-    subgraph "人（Person）"
-        Admin[👤 管理者<br/>Administrator]
-        Dev[👨‍💻 開発者<br/>Developer]
-    end
+    Admin[👤 管理者<br/>Administrator]
+    Dev[👨‍💻 開発者<br/>Developer]
     
-    subgraph "ロール（Role）と制限"
-        AdminRole[🔑 管理者ロール<br/>制限: なし]
-        DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
-    end
+    AdminRole[🔑 管理者ロール<br/>制限: なし]
+    DevRole[🔑 開発者ロール<br/>制限: Boundary適用<br/>Bootstrap不可]
     
     subgraph "CDK Setup Stack（管理者が作成）"
-        SetupStack[📦 cdk-setup Stack]
+        SetupStack[📦 CDK Setup Stack]
     end
     
     subgraph "Setup Stack リソース（管理者が作成）"
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
+        DevRoleResource[🔑 開発者ロール]
     end
     
     subgraph "Bootstrap（管理者が実行）"
@@ -32,7 +29,7 @@ graph TB
     end
     
     subgraph "CDK App Stack（開発者が作成）"
-        CDKStack[📚 CDK Stack]
+        AppStack[📚 CDK App Stack]
         QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
         Aspects[🔍 CDK Aspects]
     end
@@ -44,7 +41,8 @@ graph TB
     end
     
     subgraph "AWSリソース（開発者が作成）"
-        Lambda[⚡ Lambda Function<br/>+ IAM Role with PB]
+        Lambda[⚡ Lambda Function]
+        LambdaRole[👔 Lambda IAM Role<br/>+ Permissions Boundary]
         S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
         CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
     end
@@ -55,46 +53,52 @@ graph TB
     AdminRole -->|1. Setup Stack作成| SetupStack
     SetupStack -->|作成| PBPolicy
     SetupStack -->|作成| DenyPolicy
+    SetupStack -->|作成| DevRoleResource
     
     AdminRole -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
-    Bootstrap --> S3Assets
-    Bootstrap --> ECRRepo
-    Bootstrap --> BootstrapRoles
+    Bootstrap -->|作成| S3Assets
+    Bootstrap -->|作成| ECRRepo
+    Bootstrap -->|作成| BootstrapRoles
     
     DevRole -->|3. Qualifier設定| QualifierConfig
-    DevRole -->|4. スタック開発| CDKStack
+    DevRole -->|4. スタック開発| AppStack
     QualifierConfig -.参照.-> Bootstrap
-    CDKStack --> Aspects
+    AppStack --> Aspects
     
-    DevRole -->|5. デプロイ| Lambda
-    DevRole -->|5. デプロイ| S3Bucket
-    DevRole -->|5. デプロイ| CustomRole
+    AppStack -->|5. リソース作成| Lambda
+    AppStack -->|5. リソース作成| LambdaRole
+    AppStack -->|5. リソース作成| S3Bucket
+    AppStack -->|5. リソース作成| CustomRole
     
     Aspects -.検証.-> Lambda
+    Aspects -.検証.-> LambdaRole
     Aspects -.検証.-> S3Bucket
     Aspects -.検証.-> CustomRole
     
-    PBPolicy -.参照元: Setup Stack.-> Lambda
+    PBPolicy -.参照元: Setup Stack.-> LambdaRole
     PBPolicy -.参照元: Setup Stack.-> CustomRole
     DenyPolicy -.参照元: Setup Stack.-> CustomRole
     
+    Lambda --> LambdaRole
     Lambda -.アクセス.-> S3Bucket
     
     style Admin fill:#FFFFFF
     style Dev fill:#FFFFFF
-    style AdminRole fill:#FFE5E5
+    style AdminRole fill:#FFFFFF
     style DevRole fill:#FFE5E5
     style SetupStack fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
+    style DevRoleResource fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
     style S3Assets fill:#FFE5E5
     style ECRRepo fill:#FFE5E5
     style BootstrapRoles fill:#FFE5E5
-    style CDKStack fill:#E5F5FF
+    style AppStack fill:#E5F5FF
     style QualifierConfig fill:#E5F5FF
     style Aspects fill:#E5F5FF
     style Lambda fill:#E5F5FF
+    style LambdaRole fill:#E5F5FF
     style S3Bucket fill:#E5F5FF
     style CustomRole fill:#E5F5FF
 ```
