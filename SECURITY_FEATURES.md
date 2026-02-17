@@ -19,8 +19,6 @@ graph TB
         SetupCfn[☁️ Setup CloudFormation]
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
-        DeployRole[🔑 Deploy Role<br/>制限: Boundary適用<br/>Bootstrap不可]
-        ExecRole[🔑 CloudFormation Exec Role<br/>制限: Boundary適用]
     end
     
     subgraph "Bootstrap（管理者が実行）"
@@ -31,7 +29,8 @@ graph TB
         BootstrapCfn[☁️ Bootstrap CloudFormation]
         S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
         ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
-        BootstrapRoles[👔 Bootstrap IAM Roles<br/>Deploy/Exec Roles]
+        DeployRole[🔑 Deploy Role<br/>制限: Boundary適用<br/>Bootstrap不可]
+        ExecRole[🔑 CloudFormation Exec Role<br/>制限: Boundary適用]
     end
     
     subgraph "CDK App Stack（開発者が作成）"
@@ -54,19 +53,21 @@ graph TB
     SetupStack -->|デプロイ| SetupCfn
     SetupCfn -->|作成| PBPolicy
     SetupCfn -->|作成| DenyPolicy
-    SetupCfn -->|作成| DeployRole
-    SetupCfn -->|作成| ExecRole
     
     Admin -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
     Bootstrap -->|デプロイ| BootstrapCfn
     BootstrapCfn -->|作成| S3Assets
     BootstrapCfn -->|作成| ECRRepo
-    BootstrapCfn -->|作成| BootstrapRoles
+    BootstrapCfn -->|作成| DeployRole
+    BootstrapCfn -->|作成| ExecRole
+    PBPolicy -.適用.-> DeployRole
+    PBPolicy -.適用.-> ExecRole
     
     Dev -->|3. Qualifier設定| QualifierConfig
     QualifierConfig -.指定.-> BootstrapCfn
     DeployRole -->|4. スタック開発| AppStack
     AppStack -.参照.-> QualifierConfig
+    AppStack -.assume.-> ExecRole
     ExecRole -->|デプロイ| AppCfn
     AppStack -.検証.-> Aspects
     
@@ -76,7 +77,8 @@ graph TB
     AppCfn -->|5. リソース作成| CustomRole
     AppCfn -.参照.-> S3Assets
     AppCfn -.参照.-> ECRRepo
-    AppCfn -.参照.-> BootstrapRoles
+    AppCfn -.参照.-> DeployRole
+    AppCfn -.参照.-> ExecRole
     
     PBPolicy -.参照元: Setup Stack.-> LambdaRole
     PBPolicy -.参照元: Setup Stack.-> CustomRole
@@ -91,13 +93,12 @@ graph TB
     style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
-    style DeployRole fill:#FFE5E5
-    style ExecRole fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
     style BootstrapCfn fill:#FFE5E5
     style S3Assets fill:#FFE5E5
     style ECRRepo fill:#FFE5E5
-    style BootstrapRoles fill:#FFE5E5
+    style DeployRole fill:#FFE5E5
+    style ExecRole fill:#FFE5E5
     style AppStack fill:#E5F5FF
     style AppCfn fill:#E5F5FF
     style QualifierConfig fill:#E5F5FF
