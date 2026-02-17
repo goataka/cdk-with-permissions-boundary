@@ -31,25 +31,19 @@ graph TB
     
     subgraph "Bootstrap リソース（管理者が作成）"
         BootstrapCfn[☁️ Bootstrap CloudFormation]
-    end
-    
-    subgraph "CDK App Stack（開発者が作成）"
-        AppStack[📚 CDK App Stack]
-        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
-    end
-    
-    subgraph "App Stack リソース（開発者が作成）"
-        AppCfn[☁️ App CloudFormation]
-        Aspects[🔍 CDK Aspects]
-    end
-    
-    subgraph "AWSリソース（管理者が作成）"
         S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
         ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
         BootstrapRoles[👔 Bootstrap IAM Roles<br/>Deploy/Exec Roles]
     end
     
+    subgraph "CDK App Stack（開発者が作成）"
+        AppStack[📚 CDK App Stack]
+        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
+        Aspects[🔍 CDK Aspects]
+    end
+    
     subgraph "AWSリソース（開発者が作成）"
+        AppCfn[☁️ App CloudFormation]
         Lambda[⚡ Lambda Function]
         LambdaRole[👔 Lambda IAM Role<br/>+ Permissions Boundary]
         S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
@@ -73,7 +67,6 @@ graph TB
     
     DevRoleResource -->|3. Qualifier設定| QualifierConfig
     DevRoleResource -->|4. スタック開発| AppStack
-    QualifierConfig -.参照.-> Bootstrap
     AppStack -.参照.-> QualifierConfig
     AppStack -->|デプロイ| AppCfn
     AppStack -.検証.-> Aspects
@@ -82,6 +75,9 @@ graph TB
     AppCfn -->|5. リソース作成| LambdaRole
     AppCfn -->|5. リソース作成| S3Bucket
     AppCfn -->|5. リソース作成| CustomRole
+    AppCfn -.参照.-> S3Assets
+    AppCfn -.参照.-> ECRRepo
+    AppCfn -.参照.-> BootstrapRoles
     
     PBPolicy -.参照元: Setup Stack.-> LambdaRole
     PBPolicy -.参照元: Setup Stack.-> CustomRole
