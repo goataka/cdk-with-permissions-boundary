@@ -16,10 +16,10 @@ graph TB
     
     subgraph "CDK Setup Stack（管理者が作成）"
         SetupStack[📦 CDK Setup Stack]
-        SetupCfn[☁️ CDK Setup CloudFormation]
     end
     
     subgraph "Setup Stack リソース（管理者が作成）"
+        SetupCfn[☁️ Setup CloudFormation]
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
         DevRoleResource[🔑 開発者ロール]
@@ -27,13 +27,19 @@ graph TB
     
     subgraph "Bootstrap（管理者が実行）"
         Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo<br/>--custom-permissions-boundary]
-        BootstrapCfn[☁️ CDK Bootstrap CloudFormation]
+    end
+    
+    subgraph "Bootstrap リソース（管理者が作成）"
+        BootstrapCfn[☁️ Bootstrap CloudFormation]
     end
     
     subgraph "CDK App Stack（開発者が作成）"
         AppStack[📚 CDK App Stack]
-        AppCfn[☁️ CDK App CloudFormation]
         QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
+    end
+    
+    subgraph "App Stack リソース（開発者が作成）"
+        AppCfn[☁️ App CloudFormation]
         Aspects[🔍 CDK Aspects]
     end
     
@@ -65,22 +71,17 @@ graph TB
     BootstrapCfn -->|作成| ECRRepo
     BootstrapCfn -->|作成| BootstrapRoles
     
-    DevRoleResource -.assume.-> DevRole
-    DevRole -->|3. Qualifier設定| QualifierConfig
-    DevRole -->|4. スタック開発| AppStack
+    DevRoleResource -->|3. Qualifier設定| QualifierConfig
+    DevRoleResource -->|4. スタック開発| AppStack
     QualifierConfig -.参照.-> Bootstrap
+    AppStack -.参照.-> QualifierConfig
     AppStack -->|デプロイ| AppCfn
-    AppStack --> Aspects
+    AppStack -.検証.-> Aspects
     
     AppCfn -->|5. リソース作成| Lambda
     AppCfn -->|5. リソース作成| LambdaRole
     AppCfn -->|5. リソース作成| S3Bucket
     AppCfn -->|5. リソース作成| CustomRole
-    
-    Aspects -.検証.-> Lambda
-    Aspects -.検証.-> LambdaRole
-    Aspects -.検証.-> S3Bucket
-    Aspects -.検証.-> CustomRole
     
     PBPolicy -.参照元: Setup Stack.-> LambdaRole
     PBPolicy -.参照元: Setup Stack.-> CustomRole
@@ -92,7 +93,6 @@ graph TB
     style Admin fill:#FFFFFF
     style Dev fill:#FFFFFF
     style AdminRole fill:#FFFFFF
-    style DevRole fill:#FFE5E5
     style SetupStack fill:#FFE5E5
     style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
