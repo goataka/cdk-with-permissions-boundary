@@ -10,85 +10,87 @@
 graph TB
     Admin[👤 管理者<br/>Administrator]
     Dev[👨‍💻 開発者<br/>Developer]
+    DevRole[⛑️ 開発者ロール<br/>Developer Role]
     
-    subgraph "CDK Setup Stack（管理者が作成）"
+    subgraph "CDK Setup Stack"
         SetupStack[📦 CDK Setup Stack]
     end
     
-    subgraph "Setup Stack リソース（管理者が作成）"
+    subgraph "Setup Stack リソース"
         SetupCfn[☁️ Setup CloudFormation]
         PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
     end
     
-    subgraph "Bootstrap（管理者が実行）"
-        Bootstrap[🔧 Bootstrap実行<br/>--qualifier pbdemo<br/>--custom-permissions-boundary]
+    subgraph "Bootstrap"
+        Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
     end
     
-    subgraph "Bootstrap リソース（管理者が作成）"
-        BootstrapCfn[☁️ Bootstrap CloudFormation]
-        S3Assets[🪣 S3 Bucket<br/>cdk-pbdemo-assets-*]
-        ECRRepo[🐳 ECR Repository<br/>cdk-pbdemo-container-*]
-        DeployRole[🔑 Deploy Role<br/>制限: Boundary適用<br/>Bootstrap不可]
-        ExecRole[🔑 CloudFormation Exec Role<br/>制限: Boundary適用]
+    subgraph "Bootstrap リソース"
+        BootstrapCfn[☁️ Bootstrap CloudFormation<br/>🏷️ Qualifier: pbdemo]
+        S3Assets[🪣 S3 Bucket<br/>🏷️ cdk-pbdemo-assets-*]
+        ECRRepo[🐳 ECR Repository<br/>🏷️ cdk-pbdemo-container-*]
+        DeployRole[⛑️ Deployment Action Role<br/>cdk-pbdemo-deploy-role]
+        ExecRole[⛑️ CloudFormation Execution Role<br/>🛡️ Boundary制限あり<br/>cdk-pbdemo-cfn-exec-role]
     end
     
-    subgraph "CDK App Stack（開発者が作成）"
-        AppStack[📚 CDK App Stack]
-        QualifierConfig[⚙️ cdk.json<br/>Qualifier: pbdemo]
+    subgraph "CDK App Stack"
+        AppStack[📦 CDK App Stack]
+        QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
         Aspects[🔍 CDK Aspects]
     end
     
-    subgraph "AWSリソース（開発者が作成）"
+    subgraph "AWSリソース"
         AppCfn[☁️ App CloudFormation]
         Lambda[⚡ Lambda Function]
-        LambdaRole[👔 Lambda IAM Role<br/>+ Permissions Boundary]
+        LambdaRole[⛑️ Lambda IAM Role<br/>🛡️ Boundary制限あり]
         S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
-        CustomRole[👔 Custom IAM Role<br/>+ Permissions Boundary<br/>+ Deny Policy]
+        CustomRole[⛑️ Custom IAM Role<br/>🛡️ Boundary制限あり]
     end
     
-    Dev -.assume.-> DeployRole
+    subgraph Legend[" 凡例 "]
+        LegendAdmin[■ 管理者が作成]
+        LegendDev[■ 開発者が作成]
+    end
     
-    Admin -->|1. Setup Stack作成| SetupStack
+    Dev -.assume.-> DevRole
+    DevRole -.assume.-> DeployRole
+    
+    Admin -->|1. Setup Stack| SetupStack
     SetupStack -->|デプロイ| SetupCfn
-    SetupCfn -->|作成| PBPolicy
-    SetupCfn -->|作成| DenyPolicy
+    SetupCfn --> PBPolicy
+    SetupCfn --> DenyPolicy
     
-    Admin -->|2. Bootstrap実行<br/>開発者は実行不可| Bootstrap
+    Admin -->|2. Bootstrap<br/>開発者は実行不可| Bootstrap
     Bootstrap -->|デプロイ| BootstrapCfn
-    BootstrapCfn -->|作成| S3Assets
-    BootstrapCfn -->|作成| ECRRepo
-    BootstrapCfn -->|作成| DeployRole
-    BootstrapCfn -->|作成| ExecRole
-    PBPolicy -.適用.-> DeployRole
-    PBPolicy -.適用.-> ExecRole
+    BootstrapCfn --> S3Assets
+    BootstrapCfn --> ECRRepo
+    BootstrapCfn --> DeployRole
+    BootstrapCfn --> ExecRole
     
     Dev -->|3. Qualifier設定| QualifierConfig
-    QualifierConfig -.指定.-> BootstrapCfn
+    QualifierConfig -.🏷️指定.-> BootstrapCfn
     DeployRole -->|4. スタック開発| AppStack
     AppStack -.参照.-> QualifierConfig
-    AppStack -.assume.-> ExecRole
-    ExecRole -->|デプロイ| AppCfn
+    AppStack -->|実行| AppCfn
+    AppStack -.PassRole.-> ExecRole
     AppStack -.検証.-> Aspects
     
-    AppCfn -->|5. リソース作成| Lambda
-    AppCfn -->|5. リソース作成| LambdaRole
-    AppCfn -->|5. リソース作成| S3Bucket
-    AppCfn -->|5. リソース作成| CustomRole
+    AppCfn --> Lambda
+    AppCfn --> LambdaRole
+    AppCfn --> S3Bucket
+    AppCfn --> CustomRole
     AppCfn -.参照.-> S3Assets
     AppCfn -.参照.-> ECRRepo
     AppCfn -.参照.-> DeployRole
     AppCfn -.参照.-> ExecRole
-    
-    PBPolicy -.参照元: Setup Stack.-> LambdaRole
-    PBPolicy -.参照元: Setup Stack.-> CustomRole
-    DenyPolicy -.参照元: Setup Stack.-> CustomRole
     
     Lambda --> LambdaRole
     Lambda -.アクセス.-> S3Bucket
     
     style Admin fill:#FFFFFF
     style Dev fill:#FFFFFF
+    style DevRole fill:#FFFFFF
     style SetupStack fill:#FFE5E5
     style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
@@ -107,14 +109,17 @@ graph TB
     style LambdaRole fill:#E5F5FF
     style S3Bucket fill:#E5F5FF
     style CustomRole fill:#E5F5FF
+    style LegendAdmin fill:#FFE5E5
+    style LegendDev fill:#E5F5FF
+    style Legend fill:#F5F5F5
 ```
 
 ### ロールと制限の説明
 
 | ロール | 実行可能な操作 | 制限 | 目的 |
 |--------|--------------|------|------|
-| **Deploy Role** | ✅ CDKアプリ開発<br/>✅ CloudFormation実行依頼<br/>✅ cdk.json設定 | ❌ Bootstrap実行不可<br/>❌ Permissions Boundary変更不可<br/>❌ IAM操作制限（PB内のみ） | アプリケーション開発とデプロイ依頼 |
-| **CloudFormation Exec Role** | ✅ CloudFormation経由のリソース作成<br/>✅ Permissions Boundary内のIAM操作 | ❌ Permissions Boundary変更不可<br/>❌ Boundary外の操作不可 | CloudFormationによる実際のリソース作成 |
+| **Deployment Action Role** | ✅ CDKアプリ開発<br/>✅ CloudFormation実行依頼<br/>✅ cdk.json設定 | ❌ Bootstrap実行不可<br/>❌ IAM操作制限 | アプリケーション開発とデプロイ依頼（Permissions Boundary適用なし） |
+| **CloudFormation Execution Role** | ✅ CloudFormation経由のリソース作成<br/>✅ Permissions Boundary内のIAM操作 | 🛡️ Permissions Boundary制限<br/>❌ Permissions Boundary変更不可<br/>❌ Boundary外の操作不可 | CloudFormationによる実際のリソース作成 |
 
 ### セットアップフロー
 
