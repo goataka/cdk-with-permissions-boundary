@@ -111,7 +111,6 @@ graph TB
     style CustomRole fill:#E5F5FF
     style LegendAdmin fill:#FFE5E5
     style LegendDev fill:#E5F5FF
-    style Legend fill:#F5F5F5
 ```
 
 ### ロールと制限の説明
@@ -185,15 +184,15 @@ graph LR
     end
     
     subgraph "CDK Aspects検証"
-        AspectCheck1{S3暗号化?}
-        AspectCheck2{IAM Admin権限?}
-        AspectCheck3{ワイルドカード?}
+        AspectCheck1{"S3暗号化?"}
+        AspectCheck2{"IAM Admin権限?"}
+        AspectCheck3{"ワイルドカード?"}
     end
     
     subgraph "Permissions Boundary制約"
-        PBCheck1{S3操作?}
-        PBCheck2{Lambda操作?}
-        PBCheck3{IAM操作?}
+        PBCheck1{"S3操作?"}
+        PBCheck2{"Lambda操作?"}
+        PBCheck3{"IAM操作?"}
     end
     
     subgraph "デプロイ結果"
@@ -214,12 +213,6 @@ graph LR
     
     style Deploy fill:#E5FFE5
     style Error fill:#FFE5E5
-    style AspectCheck1 fill:#E5F5FF
-    style AspectCheck2 fill:#E5F5FF
-    style AspectCheck3 fill:#E5F5FF
-    style PBCheck1 fill:#FFE5E5
-    style PBCheck2 fill:#FFE5E5
-    style PBCheck3 fill:#FFE5E5
 ```
 
 ### セキュリティレイヤーの詳細
