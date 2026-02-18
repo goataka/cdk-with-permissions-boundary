@@ -48,9 +48,9 @@ graph TB
         CustomRole[⛑️ Custom IAM Role<br/>🛡️ Boundary制限あり]
     end
     
-    subgraph Legend[" 凡例 "]
-        LegendAdmin[■ 管理者が作成]
-        LegendDev[■ 開発者が作成]
+    subgraph Legend["凡例"]
+        LegendAdmin["■ 管理者が作成"]
+        LegendDev["■ 開発者が作成"]
     end
     
     Dev -.assume.-> DevRole
