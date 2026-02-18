@@ -22,7 +22,7 @@ graph TB
         DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
     end
     
-    subgraph "Bootstrap"
+    subgraph "Bootstrap実行"
         Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
     end
     
@@ -48,7 +48,7 @@ graph TB
         CustomRole[⛑️ Custom IAM Role<br/>🛡️ Boundary制限あり]
     end
     
-    subgraph Legend["凡例"]
+    subgraph "凡例"
         LegendAdmin["■ 管理者が作成"]
         LegendDev["■ 開発者が作成"]
     end
