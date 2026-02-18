@@ -8,6 +8,12 @@
 
 ```mermaid
 graph TB
+    subgraph " "
+        direction LR
+        LegendAdmin["■ 管理者が作成"]
+        LegendDev["■ 開発者が作成"]
+    end
+    
     Admin[👤 管理者<br/>Administrator]
     Dev[👨‍💻 開発者<br/>Developer]
     DevRole[⛑️ 開発者ロール<br/>Developer Role]
@@ -48,25 +54,14 @@ graph TB
         CustomRole[⛑️ Custom IAM Role<br/>🛡️ Boundary制限あり]
     end
     
-    subgraph "凡例"
-        LegendAdmin["■ 管理者が作成"]
-        LegendDev["■ 開発者が作成"]
-    end
-    
     Dev -.assume.-> DevRole
     DevRole -.assume.-> DeployRole
     
     Admin -->|1. Setup Stack| SetupStack
     SetupStack -->|デプロイ| SetupCfn
-    SetupCfn --> PBPolicy
-    SetupCfn --> DenyPolicy
     
     Admin -->|2. Bootstrap<br/>開発者は実行不可| Bootstrap
     Bootstrap -->|デプロイ| BootstrapCfn
-    BootstrapCfn --> S3Assets
-    BootstrapCfn --> ECRRepo
-    BootstrapCfn --> DeployRole
-    BootstrapCfn --> ExecRole
     
     Dev -->|3. Qualifier設定| QualifierConfig
     QualifierConfig -.🏷️指定.-> BootstrapCfn
@@ -76,10 +71,6 @@ graph TB
     AppStack -.PassRole.-> ExecRole
     AppStack -.検証.-> Aspects
     
-    AppCfn --> Lambda
-    AppCfn --> LambdaRole
-    AppCfn --> S3Bucket
-    AppCfn --> CustomRole
     AppCfn -.参照.-> S3Assets
     AppCfn -.参照.-> ECRRepo
     AppCfn -.参照.-> DeployRole
