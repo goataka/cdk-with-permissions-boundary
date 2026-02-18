@@ -12,11 +12,14 @@ graph TB
         direction LR
         LegendAdmin["■ 管理者が作成"]
         LegendDev["■ 開発者が作成"]
+        LegendOther["■ 任意（その他）"]
     end
+    
+    Admin[👤 管理者<br/>Administrator]
+    Dev[👨‍💻 開発者<br/>Developer]
     
     subgraph "AWS"
         subgraph "管理者セクション"
-            Admin[👤 管理者<br/>Administrator]
             AdminRole[⛑️ 管理者ロール<br/>Administrator Role]
             
             subgraph "CDK Setup Stack"
@@ -42,7 +45,6 @@ graph TB
         end
         
         subgraph "開発者セクション"
-            Dev[👨‍💻 開発者<br/>Developer]
             DevRole[⛑️ 開発者ロール<br/>Developer Role]
             
             subgraph "CDK App Stack"
@@ -73,15 +75,14 @@ graph TB
     
     Dev -->|3. Qualifier設定| QualifierConfig
     QualifierConfig -.🏷️指定.-> BootstrapCfn
-    DeployRole -->|4. スタック開発| AppStack
+    DeployRole -->|4. 実行| AppStack
     AppStack -.参照.-> QualifierConfig
-    AppStack -->|実行| AppCfn
+    AppStack -->|デプロイ| AppCfn
     AppStack -.PassRole.-> ExecRole
     AppStack -.検証.-> Aspects
     
     AppCfn -.参照.-> AssetStorage
-    AppCfn -.参照.-> DeployRole
-    AppCfn -.参照.-> ExecRole
+    AppCfn -.assume.-> ExecRole
     
     Lambda --> LambdaRole
     Lambda -.アクセス.-> S3Bucket
@@ -109,6 +110,7 @@ graph TB
     style CustomRole fill:#E5F5FF
     style LegendAdmin fill:#FFE5E5
     style LegendDev fill:#E5F5FF
+    style LegendOther fill:#FFFFFF
 ```
 
 ### ロールと制限の説明
