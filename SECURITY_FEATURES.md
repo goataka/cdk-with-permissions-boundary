@@ -15,25 +15,27 @@ graph TB
         LegendOther["■ 任意（その他）"]
     end
     
-    Admin[👤 管理者<br/>Administrator]
-    Dev[👨‍💻 開発者<br/>Developer]
+    subgraph "ユーザー"
+        Admin[👤 管理者<br/>Administrator]
+        Dev[👨‍💻 開発者<br/>Developer]
+    end
+    
+    subgraph "CDK"
+        SetupStack[📦 CDK Setup Stack]
+        Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
+        AppStack[📦 CDK App Stack]
+        QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
+        Aspects[🔍 CDK Aspects]
+    end
     
     subgraph "AWS"
         subgraph "管理者セクション"
             AdminRole[⛑️ 管理者ロール<br/>Administrator Role]
             
-            subgraph "CDK Setup Stack"
-                SetupStack[📦 CDK Setup Stack]
-            end
-            
             subgraph "Setup Stack リソース"
                 SetupCfn[☁️ Setup CloudFormation]
                 PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
                 DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
-            end
-            
-            subgraph "Bootstrap実行"
-                Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
             end
             
             subgraph "Bootstrap リソース"
@@ -47,12 +49,6 @@ graph TB
         subgraph "開発者セクション"
             DevRole[⛑️ 開発者ロール<br/>Developer Role]
             
-            subgraph "CDK App Stack"
-                AppStack[📦 CDK App Stack]
-                QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
-                Aspects[🔍 CDK Aspects]
-            end
-            
             subgraph "AWSリソース"
                 AppCfn[☁️ App CloudFormation]
                 Lambda[⚡ Lambda Function]
@@ -63,23 +59,26 @@ graph TB
         end
     end
     
+    Admin -->|実行| SetupStack
+    SetupStack -->|生成| SetupCfn
     Admin -->|利用| AdminRole
-    AdminRole -->|1. Setup Stack| SetupStack
-    SetupStack -->|デプロイ| SetupCfn
+    AdminRole -->|デプロイ| SetupCfn
     
-    AdminRole -->|2. Bootstrap<br/>開発者は実行不可| Bootstrap
-    Bootstrap -->|デプロイ| BootstrapCfn
+    Admin -->|実行| Bootstrap
+    Bootstrap -->|生成| BootstrapCfn
+    AdminRole -->|デプロイ| BootstrapCfn
     
     Dev -.assume.-> DevRole
     DevRole -.assume.-> DeployRole
     
     Dev -->|3. Qualifier設定| QualifierConfig
     QualifierConfig -.🏷️指定.-> BootstrapCfn
-    DeployRole -->|4. 実行| AppStack
+    Dev -->|実行| AppStack
+    AppStack -->|生成| AppCfn
     AppStack -.参照.-> QualifierConfig
-    AppStack -->|デプロイ| AppCfn
     AppStack -.PassRole.-> ExecRole
     AppStack -.検証.-> Aspects
+    DeployRole -->|デプロイ| AppCfn
     
     AppCfn -.参照.-> AssetStorage
     AppCfn -.assume.-> ExecRole
