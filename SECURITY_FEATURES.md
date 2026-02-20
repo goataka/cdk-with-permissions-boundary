@@ -15,14 +15,15 @@ graph TB
         LegendOther["■ 任意（その他）"]
     end
     
-    subgraph "ユーザー"
-        Admin[👤 管理者<br/>Administrator]
-        Dev[👨‍💻 開発者<br/>Developer]
-    end
+    Admin[👤 管理者<br/>Administrator]
+    Dev[👨‍💻 開発者<br/>Developer]
     
-    subgraph "CDK"
+    subgraph "管理者用CDK"
         SetupStack[📦 CDK Setup Stack]
         Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
+    end
+    
+    subgraph "開発者用CDK"
         AppStack[📦 CDK App Stack]
         QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
         Aspects[🔍 CDK Aspects]
