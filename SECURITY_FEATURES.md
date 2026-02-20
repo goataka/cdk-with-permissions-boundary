@@ -18,19 +18,13 @@ graph TB
     Admin[👤 管理者<br/>Administrator]
     Dev[👨‍💻 開発者<br/>Developer]
     
-    subgraph "管理者用CDK"
-        SetupStack[📦 CDK Setup Stack]
-        Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
-    end
-    
-    subgraph "開発者用CDK"
-        AppStack[📦 CDK App Stack]
-        QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
-        Aspects[🔍 CDK Aspects]
-    end
-    
     subgraph "AWS"
         subgraph "管理者セクション"
+            subgraph "管理者用CDK"
+                SetupStack[📦 CDK Setup Stack]
+                Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
+            end
+            
             AdminRole[⛑️ 管理者ロール<br/>Administrator Role]
             
             subgraph "Setup Stack リソース"
@@ -48,6 +42,12 @@ graph TB
         end
         
         subgraph "開発者セクション"
+            subgraph "開発者用CDK"
+                AppStack[📦 CDK App Stack]
+                QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
+                Aspects[🔍 CDK Aspects]
+            end
+            
             DevRole[⛑️ 開発者ロール<br/>Developer Role]
             
             subgraph "AWSリソース"
