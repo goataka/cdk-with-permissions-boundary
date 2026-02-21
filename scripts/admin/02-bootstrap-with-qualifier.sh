@@ -21,16 +21,10 @@
 #
 set -euo pipefail
 
-# メイン処理
-main() {
-  local -r qualifier="${1:-pbdemo}"
+# AWS環境情報を取得して表示
+show_environment_info() {
+  local -r qualifier="${1}"
   
-  echo "=========================================="
-  echo "CDK Bootstrap (Qualifier: ${qualifier})"
-  echo "=========================================="
-  echo ""
-  
-  # 環境情報の取得
   echo "📋 環境情報を取得中..."
   local -r aws_account_id="$(aws sts get-caller-identity --query Account --output text)"
   local -r aws_region="$(aws configure get region)"
@@ -40,8 +34,13 @@ main() {
   echo "  Qualifier: ${qualifier}"
   echo ""
   
-  # Permissions Boundary ARNの取得
+  echo "${aws_account_id}:${aws_region}"
+}
+
+# Permissions Boundary ARNを取得
+get_permissions_boundary_arn() {
   echo "🔍 Permissions Boundary ARNを取得中..."
+  
   local permissions_boundary_arn
   permissions_boundary_arn=$(aws cloudformation describe-stacks \
     --stack-name CdkSetupStack \
@@ -54,14 +53,22 @@ main() {
     echo "先に以下のスクリプトを実行してください:"
     echo "  scripts/admin/01-setup-permissions-boundary.sh"
     echo ""
-    exit 1
+    return 1
   fi
   
   echo "  Permissions Boundary ARN:"
   echo "  ${permissions_boundary_arn}"
   echo ""
   
-  # Bootstrap実行内容の説明
+  echo "${permissions_boundary_arn}"
+}
+
+# Bootstrap実行内容を説明
+show_bootstrap_info() {
+  local -r qualifier="${1}"
+  local -r aws_account_id="${2}"
+  local -r aws_region="${3}"
+  
   echo "📦 Bootstrap実行内容:"
   echo ""
   echo "  作成されるリソース:"
@@ -71,17 +78,24 @@ main() {
   echo "  - IAMロール: CloudFormation Execution Role (Permissions Boundary適用済み)"
   echo "  - CloudFormationスタック: CDKToolkit-${qualifier}"
   echo ""
-  
-  # 確認プロンプト
+}
+
+# Bootstrap実行の確認
+confirm_bootstrap() {
+  local confirmation
   read -p "Bootstrapを実行しますか？ (y/N): " -r confirmation
   echo ""
   
-  if [[ ! "${confirmation}" =~ ^[Yy]$ ]]; then
-    echo "❌ Bootstrapをキャンセルしました"
-    exit 0
-  fi
+  [[ "${confirmation}" =~ ^[Yy]$ ]]
+}
+
+# Bootstrapを実行
+execute_bootstrap() {
+  local -r qualifier="${1}"
+  local -r permissions_boundary_arn="${2}"
+  local -r aws_account_id="${3}"
+  local -r aws_region="${4}"
   
-  # Bootstrap実行
   echo "🚀 Bootstrapを実行中..."
   echo ""
   
@@ -94,33 +108,58 @@ main() {
   echo ""
   echo "✅ Bootstrapが完了しました"
   echo ""
+}
+
+# S3バケットの存在を確認
+check_s3_bucket() {
+  local -r bucket_name="${1}"
   
-  # 作成されたリソースの確認
+  if aws s3 ls "s3://${bucket_name}" >/dev/null 2>&1; then
+    echo "  ✓ S3バケット: ${bucket_name}"
+  fi
+}
+
+# ECRリポジトリの存在を確認
+check_ecr_repository() {
+  local -r repo_name="${1}"
+  
+  if aws ecr describe-repositories --repository-names "${repo_name}" >/dev/null 2>&1; then
+    echo "  ✓ ECRリポジトリ: ${repo_name}"
+  fi
+}
+
+# CloudFormationスタックの存在を確認
+check_cloudformation_stack() {
+  local -r stack_name="${1}"
+  
+  if aws cloudformation describe-stacks --stack-name "${stack_name}" >/dev/null 2>&1; then
+    echo "  ✓ CloudFormationスタック: ${stack_name}"
+  fi
+}
+
+# 作成されたリソースを確認
+verify_created_resources() {
+  local -r qualifier="${1}"
+  local -r aws_account_id="${2}"
+  local -r aws_region="${3}"
+  
   echo "📋 作成されたリソース:"
   echo ""
   
-  # S3バケットの確認
-  local -r s3_bucket="cdk-${qualifier}-assets-${aws_account_id}-${aws_region}"
-  if aws s3 ls "s3://${s3_bucket}" >/dev/null 2>&1; then
-    echo "  ✓ S3バケット: ${s3_bucket}"
-  fi
-  
-  # ECRリポジトリの確認
-  local -r ecr_repo="cdk-${qualifier}-container-assets-${aws_account_id}-${aws_region}"
-  if aws ecr describe-repositories --repository-names "${ecr_repo}" >/dev/null 2>&1; then
-    echo "  ✓ ECRリポジトリ: ${ecr_repo}"
-  fi
-  
-  # CloudFormationスタックの確認
-  if aws cloudformation describe-stacks --stack-name "CDKToolkit-${qualifier}" >/dev/null 2>&1; then
-    echo "  ✓ CloudFormationスタック: CDKToolkit-${qualifier}"
-  fi
+  check_s3_bucket "cdk-${qualifier}-assets-${aws_account_id}-${aws_region}"
+  check_ecr_repository "cdk-${qualifier}-container-assets-${aws_account_id}-${aws_region}"
+  check_cloudformation_stack "CDKToolkit-${qualifier}"
   
   echo ""
+}
+
+# Permissions Boundary適用を確認
+verify_permissions_boundary() {
+  local -r qualifier="${1}"
+  
   echo "🔐 セキュリティ設定の確認:"
   echo ""
   
-  # CloudFormation Execution RoleのPermissions Boundary確認
   local -r cfn_exec_role_arn=$(aws cloudformation describe-stacks \
     --stack-name "CDKToolkit-${qualifier}" \
     --query 'Stacks[0].Outputs[?OutputKey==`CloudFormationExecutionRoleArn`].OutputValue' \
@@ -142,6 +181,10 @@ main() {
   fi
   
   echo ""
+}
+
+# 次のステップを表示
+show_next_steps() {
   echo "=========================================="
   echo "✨ Bootstrapが完了しました"
   echo "=========================================="
@@ -150,6 +193,34 @@ main() {
   echo "  開発者は以下のコマンドでアプリケーションをデプロイできます:"
   echo "  → scripts/developer/02-deploy-app.sh"
   echo ""
+}
+
+# メイン処理
+main() {
+  local -r qualifier="${1:-pbdemo}"
+  
+  echo "=========================================="
+  echo "CDK Bootstrap (Qualifier: ${qualifier})"
+  echo "=========================================="
+  echo ""
+  
+  local -r env_info="$(show_environment_info "${qualifier}")"
+  local -r aws_account_id="${env_info%%:*}"
+  local -r aws_region="${env_info##*:}"
+  
+  local -r permissions_boundary_arn="$(get_permissions_boundary_arn)" || return 1
+  
+  show_bootstrap_info "${qualifier}" "${aws_account_id}" "${aws_region}"
+  
+  if ! confirm_bootstrap; then
+    echo "❌ Bootstrapをキャンセルしました"
+    return 0
+  fi
+  
+  execute_bootstrap "${qualifier}" "${permissions_boundary_arn}" "${aws_account_id}" "${aws_region}"
+  verify_created_resources "${qualifier}" "${aws_account_id}" "${aws_region}"
+  verify_permissions_boundary "${qualifier}"
+  show_next_steps
 }
 
 main "$@"

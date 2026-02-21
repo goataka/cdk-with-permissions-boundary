@@ -19,18 +19,14 @@
 #
 set -euo pipefail
 
-# メイン処理
-main() {
+# プロジェクトルートディレクトリを取得
+get_project_root() {
   local -r script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  local -r project_root="$(cd "${script_dir}/../.." && pwd)"
-  local -r cdk_setup_dir="${project_root}/cdk-setup"
-  
-  echo "=========================================="
-  echo "Permissions Boundary セットアップ"
-  echo "=========================================="
-  echo ""
-  
-  # 環境情報の取得
+  cd "${script_dir}/../.." && pwd
+}
+
+# AWS環境情報を取得して表示
+show_environment_info() {
   echo "📋 環境情報を取得中..."
   local -r aws_account_id="$(aws sts get-caller-identity --query Account --output text)"
   local -r aws_region="$(aws configure get region)"
@@ -38,85 +34,102 @@ main() {
   echo "  AWS Account ID: ${aws_account_id}"
   echo "  AWS Region: ${aws_region}"
   echo ""
+}
+
+# 依存関係をインストール
+install_dependencies() {
+  local -r cdk_dir="${1}"
   
-  # cdk-setupディレクトリへ移動
-  cd "${cdk_setup_dir}"
-  
-  # 依存関係のインストール
+  cd "${cdk_dir}"
   echo "📦 依存関係をインストール中..."
+  
   if [ ! -d "node_modules" ]; then
     npm install
   else
     echo "  ✓ 依存関係は既にインストール済み"
   fi
   echo ""
-  
-  # TypeScriptのビルド
+}
+
+# TypeScriptをビルド
+build_typescript() {
   echo "🔨 TypeScriptをビルド中..."
   npm run build
   echo ""
-  
-  # CloudFormationテンプレートの生成と確認
+}
+
+# CloudFormationテンプレートを生成
+generate_template() {
   echo "📄 CloudFormationテンプレートを生成中..."
   npx cdk synth
   echo ""
-  
-  # デプロイ前の確認
+}
+
+# デプロイ前の差分を確認
+show_deployment_diff() {
   echo "🔍 デプロイ内容を確認中..."
   npx cdk diff || true
   echo ""
-  
-  # デプロイの実行
+}
+
+# デプロイ内容を表示
+show_deployment_info() {
   echo "🚀 Permissions BoundaryとDeny Policyをデプロイ中..."
   echo ""
   echo "  作成されるリソース:"
   echo "  - CDKPermissionsBoundary (IAM Policy)"
   echo "  - CDKDenyPolicy (IAM Policy)"
   echo ""
-  
-  # 確認プロンプト
+}
+
+# デプロイ実行の確認
+confirm_deployment() {
+  local confirmation
   read -p "デプロイを実行しますか？ (y/N): " -r confirmation
   echo ""
   
-  if [[ ! "${confirmation}" =~ ^[Yy]$ ]]; then
-    echo "❌ デプロイをキャンセルしました"
-    exit 0
-  fi
-  
-  # CDKデプロイ
+  [[ "${confirmation}" =~ ^[Yy]$ ]]
+}
+
+# CDKスタックをデプロイ
+deploy_stack() {
   npx cdk deploy --require-approval never
   echo ""
+}
+
+# デプロイされたポリシーのARNを取得
+get_policy_arn() {
+  local -r output_key="${1}"
   
-  # デプロイ結果の確認
+  aws cloudformation describe-stacks \
+    --stack-name CdkSetupStack \
+    --query "Stacks[0].Outputs[?OutputKey==\`${output_key}\`].OutputValue" \
+    --output text 2>/dev/null || echo ""
+}
+
+# デプロイ結果を表示
+show_deployment_results() {
   echo "✅ デプロイが完了しました"
   echo ""
   echo "📋 作成されたポリシー:"
   
-  # Permissions Boundary ARNの取得と表示
-  local permissions_boundary_arn
-  permissions_boundary_arn=$(aws cloudformation describe-stacks \
-    --stack-name CdkSetupStack \
-    --query 'Stacks[0].Outputs[?OutputKey==`PermissionsBoundaryArn`].OutputValue' \
-    --output text 2>/dev/null || echo "")
-  
+  local -r permissions_boundary_arn="$(get_policy_arn "PermissionsBoundaryArn")"
   if [ -n "${permissions_boundary_arn}" ]; then
     echo "  Permissions Boundary ARN:"
     echo "  ${permissions_boundary_arn}"
   fi
   
-  # Deny Policy ARNの取得と表示
-  local deny_policy_arn
-  deny_policy_arn=$(aws cloudformation describe-stacks \
-    --stack-name CdkSetupStack \
-    --query 'Stacks[0].Outputs[?OutputKey==`DenyPolicyArn`].OutputValue' \
-    --output text 2>/dev/null || echo "")
-  
+  local -r deny_policy_arn="$(get_policy_arn "DenyPolicyArn")"
   if [ -n "${deny_policy_arn}" ]; then
     echo "  Deny Policy ARN:"
     echo "  ${deny_policy_arn}"
   fi
   
   echo ""
+}
+
+# 次のステップを表示
+show_next_steps() {
   echo "=========================================="
   echo "✨ セットアップが完了しました"
   echo "=========================================="
@@ -125,6 +138,33 @@ main() {
   echo "  1. Bootstrapを実行してください"
   echo "     → scripts/admin/02-bootstrap-with-qualifier.sh"
   echo ""
+}
+
+# メイン処理
+main() {
+  local -r project_root="$(get_project_root)"
+  local -r cdk_setup_dir="${project_root}/cdk-setup"
+  
+  echo "=========================================="
+  echo "Permissions Boundary セットアップ"
+  echo "=========================================="
+  echo ""
+  
+  show_environment_info
+  install_dependencies "${cdk_setup_dir}"
+  build_typescript
+  generate_template
+  show_deployment_diff
+  show_deployment_info
+  
+  if ! confirm_deployment; then
+    echo "❌ デプロイをキャンセルしました"
+    return 0
+  fi
+  
+  deploy_stack
+  show_deployment_results
+  show_next_steps
 }
 
 main "$@"
