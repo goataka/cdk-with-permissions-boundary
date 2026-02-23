@@ -4,17 +4,16 @@
 # セキュリティ上の理由から、このワークフローは手動トリガーのみで実行可能です。
 #
 # 実行条件:
-# - 管理者権限を持つAWS認証情報が設定されていること
+# - GitHub OIDC連携が設定されていること（cloudformation/github-oidc-setup.yml）
 # - GitHub Secretsに以下が設定されていること:
 #   - AWS_ACCOUNT_ID: AWSアカウントID
 #   - AWS_REGION: デプロイ先リージョン
-#   - AWS_ACCESS_KEY_ID: 管理者のアクセスキー
-#   - AWS_SECRET_ACCESS_KEY: 管理者のシークレットキー
+#   - AWS_ROLE_ARN_ADMIN: 管理者用IAMロールARN
 #
-# セキュリティ上の注意:
-# - このワークフローは管理者のみが実行すべきです
-# - AWS認証情報は適切に保護されたGitHub Secretsに保存してください
-# - 本番環境では、IAMロールを使用したOIDC認証を推奨します
+# セキュリティ機能:
+# - OIDC認証によりアクセスキー不要
+# - 短期トークン（1時間）で自動失効
+# - 特定のGitHubリポジトリからのみアクセス可能
 
 name: 管理者セットアップ
 
@@ -35,7 +34,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # OIDC認証用（オプション）
+  id-token: write  # OIDC認証用（必須）
 
 jobs:
   admin-setup:
@@ -54,17 +53,13 @@ jobs:
           cache-dependency-path: |
             cdk-setup/package-lock.json
       
-      - name: 🔐 AWS認証情報の設定
+      - name: 🔐 AWS認証（OIDC）
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          # オプション1: アクセスキーを使用（シンプル）
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          # OIDC認証: アクセスキー不要
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_ADMIN }}
+          role-session-name: github-actions-admin-setup
           aws-region: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
-          
-          # オプション2: IAMロールを使用（推奨）
-          # role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/GitHubActionsAdminRole
-          # role-session-name: github-actions-admin-setup
       
       - name: ℹ️ 環境情報の表示
         run: |
