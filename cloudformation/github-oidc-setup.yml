@@ -1,0 +1,181 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  GitHub Actions OIDC連携の初期セットアップ
+  
+  このテンプレートは、GitHub ActionsからAWSへのOIDC認証を可能にします。
+  管理者用と開発者用の2つのIAMロールを作成し、それぞれに適切な権限を付与します。
+  
+  セキュリティ機能:
+  - アクセスキー不要の安全な認証
+  - 特定のGitHubリポジトリからのみアクセス可能
+  - 最小権限の原則に基づく権限設定
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Description: GitHubの組織名またはユーザー名
+    Default: goataka
+  
+  GitHubRepo:
+    Type: String
+    Description: GitHubリポジトリ名
+    Default: cdk-with-permissions-boundary
+  
+  PermissionsBoundaryArn:
+    Type: String
+    Description: Permissions Boundary ARN（既に作成済みの場合）
+    Default: ''
+
+Conditions:
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, '']]
+
+Resources:
+  # GitHub OIDC Provider
+  GitHubOIDCProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        # GitHub Actionsの証明書フィンガープリント
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+        - 1c58a3a8518e8759bf075b76b750d4f2df264fcd
+      Tags:
+        - Key: Name
+          Value: GitHubActionsOIDCProvider
+        - Key: Purpose
+          Value: GitHubActionsAuthentication
+
+  # 管理者用IAMロール
+  GitHubActionsAdminRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubActionsAdminRole
+      Description: GitHub Actionsで管理者操作を実行するためのロール
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOIDCProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AdministratorAccess
+      Tags:
+        - Key: Name
+          Value: GitHubActionsAdminRole
+        - Key: Purpose
+          Value: AdminSetup
+
+  # 開発者用IAMロール
+  GitHubActionsDeveloperRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: GitHubActionsDeveloperRole
+      Description: GitHub Actionsで開発者操作を実行するためのロール
+      MaxSessionDuration: 3600
+      PermissionsBoundary: !If
+        - HasPermissionsBoundary
+        - !Ref PermissionsBoundaryArn
+        - !Ref AWS::NoValue
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !GetAtt GitHubOIDCProvider.Arn
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+              StringLike:
+                token.actions.githubusercontent.com:sub: !Sub repo:${GitHubOrg}/${GitHubRepo}:*
+      Policies:
+        - PolicyName: CDKDeploymentPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cloudformation:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:*
+                Resource:
+                  - !Sub arn:aws:s3:::cdk-*-assets-${AWS::AccountId}-${AWS::Region}
+                  - !Sub arn:aws:s3:::cdk-*-assets-${AWS::AccountId}-${AWS::Region}/*
+              - Effect: Allow
+                Action:
+                  - ecr:*
+                Resource:
+                  - !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/cdk-*-container-assets-${AWS::AccountId}-${AWS::Region}
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:PassRole
+                  - iam:CreateRole
+                  - iam:DeleteRole
+                  - iam:PutRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:TagRole
+                  - iam:UntagRole
+                Resource:
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/cdk-*
+                  - !Sub arn:aws:iam::${AWS::AccountId}:role/CdkAppStack-*
+              - Effect: Allow
+                Action:
+                  - lambda:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - logs:*
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource:
+                  - !Sub arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/cdk-bootstrap/*
+              - Effect: Allow
+                Action:
+                  - sts:GetCallerIdentity
+                Resource: '*'
+      Tags:
+        - Key: Name
+          Value: GitHubActionsDeveloperRole
+        - Key: Purpose
+          Value: DeveloperDeploy
+
+Outputs:
+  GitHubOIDCProviderArn:
+    Description: GitHub OIDC Provider ARN
+    Value: !GetAtt GitHubOIDCProvider.Arn
+    Export:
+      Name: GitHubOIDCProviderArn
+  
+  AdminRoleArn:
+    Description: 管理者用IAMロールARN
+    Value: !GetAtt GitHubActionsAdminRole.Arn
+    Export:
+      Name: GitHubActionsAdminRoleArn
+  
+  DeveloperRoleArn:
+    Description: 開発者用IAMロールARN
+    Value: !GetAtt GitHubActionsDeveloperRole.Arn
+    Export:
+      Name: GitHubActionsDeveloperRoleArn

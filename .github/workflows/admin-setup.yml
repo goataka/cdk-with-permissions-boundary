@@ -1,0 +1,124 @@
+# 管理者用ワークフロー: Permissions BoundaryとBootstrapのセットアップ
+#
+# このワークフローは、管理者がPermissions BoundaryとBootstrapをセットアップするために使用します。
+# セキュリティ上の理由から、このワークフローは手動トリガーのみで実行可能です。
+#
+# 実行条件:
+# - GitHub OIDC連携が設定されていること（cloudformation/github-oidc-setup.yml）
+# - GitHub Secretsに以下が設定されていること:
+#   - AWS_ACCOUNT_ID: AWSアカウントID
+#   - AWS_REGION: デプロイ先リージョン
+#   - AWS_ROLE_ARN_ADMIN: 管理者用IAMロールARN
+#
+# セキュリティ機能:
+# - OIDC認証によりアクセスキー不要
+# - 短期トークン（1時間）で自動失効
+# - 特定のGitHubリポジトリからのみアクセス可能
+
+name: 管理者セットアップ
+
+# トリガーなし（手動実行のみ）
+on:
+  workflow_dispatch:
+    inputs:
+      qualifier:
+        description: 'Bootstrap Qualifier（環境識別子）'
+        required: true
+        default: 'pbdemo'
+        type: string
+      skip_permissions_boundary:
+        description: 'Permissions Boundaryのセットアップをスキップ（既に実行済みの場合）'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write  # OIDC認証用（必須）
+
+jobs:
+  admin-setup:
+    name: 管理者セットアップ
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 コードのチェックアウト
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Node.jsのセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            cdk-setup/package-lock.json
+      
+      - name: 🔐 AWS認証（OIDC）
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # OIDC認証: アクセスキー不要
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_ADMIN }}
+          role-session-name: github-actions-admin-setup
+          aws-region: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: ℹ️ 環境情報の表示
+        run: |
+          echo "AWS Account ID: $(aws sts get-caller-identity --query Account --output text)"
+          echo "AWS Region: $(aws configure get region)"
+          echo "Qualifier: ${{ inputs.qualifier }}"
+      
+      - name: 📦 Permissions Boundaryのセットアップ
+        if: ${{ !inputs.skip_permissions_boundary }}
+        run: |
+          cd cdk-setup
+          npm ci
+          npm run build
+          npx cdk deploy --require-approval never
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: 🚀 CDK Bootstrapの実行
+        run: |
+          # Permissions Boundary ARNの取得
+          PB_ARN=$(aws cloudformation describe-stacks \
+            --stack-name CdkSetupStack \
+            --query 'Stacks[0].Outputs[?OutputKey==`PermissionsBoundaryArn`].OutputValue' \
+            --output text)
+          
+          echo "Permissions Boundary ARN: ${PB_ARN}"
+          
+          # Bootstrapの実行
+          cdk bootstrap \
+            --qualifier ${{ inputs.qualifier }} \
+            --toolkit-stack-name CDKToolkit-${{ inputs.qualifier }} \
+            --custom-permissions-boundary "${PB_ARN}" \
+            aws://${{ secrets.AWS_ACCOUNT_ID }}/${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: ✅ セットアップ結果の確認
+        run: |
+          echo "==================================="
+          echo "セットアップが完了しました"
+          echo "==================================="
+          echo ""
+          
+          # Permissions Boundary ARN
+          PB_ARN=$(aws cloudformation describe-stacks \
+            --stack-name CdkSetupStack \
+            --query 'Stacks[0].Outputs[?OutputKey==`PermissionsBoundaryArn`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "${PB_ARN}" ]; then
+            echo "Permissions Boundary ARN:"
+            echo "  ${PB_ARN}"
+          fi
+          
+          # Bootstrap Stack
+          if aws cloudformation describe-stacks \
+               --stack-name CDKToolkit-${{ inputs.qualifier }} >/dev/null 2>&1; then
+            echo "Bootstrap Stack: CDKToolkit-${{ inputs.qualifier }} ✓"
+          fi
+          
+          echo ""
+          echo "開発者は以下のワークフローでアプリをデプロイできます:"
+          echo "  → Actions > 開発者デプロイ"

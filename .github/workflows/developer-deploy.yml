@@ -1,0 +1,183 @@
+# 開発者用ワークフロー: CDKアプリケーションのデプロイ
+#
+# このワークフローは、開発者がCDKアプリケーションをデプロイするために使用します。
+# Permissions Boundary制約下で安全にリソースを作成します。
+#
+# 実行条件:
+# - 管理者がPermissions BoundaryとBootstrapを完了していること
+# - GitHub OIDC連携が設定されていること（cloudformation/github-oidc-setup.yml）
+# - GitHub Secretsに以下が設定されていること:
+#   - AWS_ACCOUNT_ID: AWSアカウントID
+#   - AWS_REGION: デプロイ先リージョン
+#   - AWS_ROLE_ARN_DEVELOPER: 開発者用IAMロールARN
+#
+# セキュリティ機能:
+# - OIDC認証によりアクセスキー不要
+# - Permissions Boundaryによる権限制限
+# - CDK Aspectsによる自動セキュリティ検証
+# - テストの自動実行
+
+name: 開発者デプロイ
+
+# トリガーなし（手動実行のみ）
+on:
+  workflow_dispatch:
+    inputs:
+      stack_name:
+        description: 'デプロイするスタック名'
+        required: false
+        default: 'CdkAppStack'
+        type: string
+      run_tests:
+        description: 'テストを実行'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  id-token: write  # OIDC認証用（必須）
+
+jobs:
+  deploy:
+    name: アプリケーションデプロイ
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 コードのチェックアウト
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Node.jsのセットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            cdk-app/package-lock.json
+      
+      - name: 🔐 AWS認証（OIDC）
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          # OIDC認証: アクセスキー不要
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN_DEVELOPER }}
+          role-session-name: github-actions-developer-deploy
+          aws-region: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: ℹ️ 環境情報の表示
+        run: |
+          echo "AWS Account ID: $(aws sts get-caller-identity --query Account --output text)"
+          echo "AWS Region: $(aws configure get region)"
+          echo "Stack Name: ${{ inputs.stack_name }}"
+      
+      - name: 📦 依存関係のインストール
+        run: |
+          cd cdk-app
+          npm ci
+      
+      - name: 🔨 TypeScriptのビルド
+        run: |
+          cd cdk-app
+          npm run build
+      
+      - name: 🧪 テストの実行
+        if: ${{ inputs.run_tests }}
+        run: |
+          cd cdk-app
+          npm test
+      
+      - name: 📄 CloudFormationテンプレートの生成
+        run: |
+          cd cdk-app
+          npx cdk synth
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: 🔍 デプロイ差分の確認
+        run: |
+          cd cdk-app
+          npx cdk diff ${{ inputs.stack_name }} || true
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: 🚀 CDKデプロイの実行
+        run: |
+          cd cdk-app
+          npx cdk deploy ${{ inputs.stack_name }} --require-approval never
+        env:
+          CDK_DEFAULT_ACCOUNT: ${{ secrets.AWS_ACCOUNT_ID }}
+          CDK_DEFAULT_REGION: ${{ secrets.AWS_REGION || 'ap-northeast-1' }}
+      
+      - name: ✅ デプロイ結果の確認
+        run: |
+          echo "==================================="
+          echo "デプロイが完了しました"
+          echo "==================================="
+          echo ""
+          
+          # スタック出力の取得
+          aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].Outputs' \
+            --output table || true
+          
+          echo ""
+          echo "デプロイされたリソース:"
+          aws cloudformation list-stack-resources \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'StackResourceSummaries[*].[ResourceType,LogicalResourceId,PhysicalResourceId]' \
+            --output table || true
+      
+      - name: 🔐 セキュリティ設定の検証
+        run: |
+          echo "セキュリティ設定を検証中..."
+          
+          # S3バケットの暗号化確認
+          BUCKET_NAME=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`BucketName`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "${BUCKET_NAME}" ]; then
+            echo "S3バケット '${BUCKET_NAME}':"
+            
+            if aws s3api get-bucket-encryption --bucket "${BUCKET_NAME}" >/dev/null 2>&1; then
+              echo "  ✓ 暗号化設定済み"
+            else
+              echo "  ⚠️ 暗号化未設定"
+            fi
+            
+            if aws s3api get-public-access-block --bucket "${BUCKET_NAME}" >/dev/null 2>&1; then
+              echo "  ✓ パブリックアクセスブロック設定済み"
+            fi
+          fi
+          
+          # Lambda関数のPermissions Boundary確認
+          FUNCTION_NAME=$(aws cloudformation describe-stacks \
+            --stack-name ${{ inputs.stack_name }} \
+            --query 'Stacks[0].Outputs[?OutputKey==`FunctionName`].OutputValue' \
+            --output text 2>/dev/null || echo "")
+          
+          if [ -n "${FUNCTION_NAME}" ]; then
+            ROLE_ARN=$(aws lambda get-function \
+              --function-name "${FUNCTION_NAME}" \
+              --query 'Configuration.Role' \
+              --output text 2>/dev/null || echo "")
+            
+            if [ -n "${ROLE_ARN}" ]; then
+              ROLE_NAME="${ROLE_ARN##*/}"
+              PB_ARN=$(aws iam get-role \
+                --role-name "${ROLE_NAME}" \
+                --query 'Role.PermissionsBoundary.PermissionsBoundaryArn' \
+                --output text 2>/dev/null || echo "None")
+              
+              if [ "${PB_ARN}" != "None" ]; then
+                echo "Lambda関数ロール:"
+                echo "  ✓ Permissions Boundary適用済み"
+              else
+                echo "Lambda関数ロール:"
+                echo "  ⚠️ Permissions Boundary未適用"
+              fi
+            fi
+          fi
