@@ -4,100 +4,66 @@
 
 ## 🏗️ AWS構成図
 
-### 全体アーキテクチャ
+### 全体アーキテクチャ（簡略版）
 
 ```mermaid
 graph TB
-    subgraph " "
-        direction LR
+    subgraph "凡例"
         LegendAdmin["■ 管理者が作成"]
         LegendDev["■ 開発者が作成"]
-        LegendOther["■ 任意（その他）"]
     end
     
-    Admin[👤 管理者<br/>Administrator]
-    Dev[👨‍💻 開発者<br/>Developer]
+    Admin[👤 管理者]
+    Dev[👨‍💻 開発者]
     
     subgraph "AWS"
         subgraph "管理者セクション"
-            subgraph "管理者用CDK"
-                SetupStack[📦 CDK Setup Stack]
-                Bootstrap[🔧 Bootstrap実行<br/>🏷️ Qualifier: pbdemo<br/>--custom-permissions-boundary]
-            end
-            
-            AdminRole[⛑️ 管理者ロール<br/>Administrator Role]
-            
-            subgraph "Setup Stack リソース"
-                SetupCfn[☁️ Setup CloudFormation]
-                PBPolicy[🛡️ Permissions Boundary<br/>CDKPermissionsBoundary]
-                DenyPolicy[⛔ Deny Policy<br/>CDKSecurityDenyPolicy]
-            end
-            
-            subgraph "Bootstrap リソース"
-                BootstrapCfn[☁️ Bootstrap CloudFormation<br/>🏷️ Qualifier: pbdemo]
-                AssetStorage[🪣🐳 CDK Asset Storage<br/>🏷️ S3: cdk-pbdemo-assets-*<br/>🏷️ ECR: cdk-pbdemo-container-*]
-                DeployRole[⛑️ Deployment Action Role<br/>cdk-pbdemo-deploy-role]
-                ExecRole[⛑️ CloudFormation Execution Role<br/>🛡️ Boundary制限あり<br/>cdk-pbdemo-cfn-exec-role]
-            end
+            SetupStack[Setup Stack]
+            PBPolicy[Permissions Boundary]
+            DenyPolicy[Deny Policy]
+            Bootstrap[Bootstrap]
+            BootstrapResources[Bootstrap リソース<br/>S3/ECR/Roles]
         end
         
         subgraph "開発者セクション"
-            subgraph "開発者用CDK"
-                AppStack[📦 CDK App Stack]
-                QualifierConfig[⚙️ cdk.json<br/>🏷️ Qualifier: pbdemo<br/>🛡️ Boundary: CDKPermissionsBoundary]
-                Aspects[🔍 CDK Aspects]
-            end
-            
-            DevRole[⛑️ 開発者ロール<br/>Developer Role]
-            
-            subgraph "AWSリソース"
-                AppCfn[☁️ App CloudFormation]
-                Lambda[⚡ Lambda Function]
-                LambdaRole[⛑️ Lambda IAM Role<br/>🛡️ Boundary制限あり]
-                S3Bucket[🪣 S3 Bucket<br/>暗号化・バージョニング]
-                CustomRole[⛑️ Custom IAM Role<br/>🛡️ Boundary制限あり]
-            end
+            AppStack[App Stack]
+            AppConfig[cdk.json<br/>PB設定]
+            AppResources[アプリリソース<br/>Lambda/S3/Roles]
         end
     end
     
-    Admin -->|実行| SetupStack
-    SetupStack -->|生成| SetupCfn
-    Admin -->|利用| AdminRole
-    AdminRole -->|デプロイ| SetupCfn
+    Admin -->|1. デプロイ| SetupStack
+    SetupStack --> PBPolicy
+    SetupStack --> DenyPolicy
     
-    Admin -->|実行| Bootstrap
-    Bootstrap -->|生成| BootstrapCfn
-    AdminRole -->|デプロイ| BootstrapCfn
+    Admin -->|2. 実行| Bootstrap
+    Bootstrap --> BootstrapResources
     
-    Dev -.assume.-> DevRole
-    DevRole -.assume.-> DeployRole
+    Dev -->|3. 設定| AppConfig
+    Dev -->|4. デプロイ| AppStack
+    AppStack --> AppResources
     
-    Dev -->|3. Qualifier設定| QualifierConfig
-    QualifierConfig -.🏷️指定.-> BootstrapCfn
-    Dev -->|実行| AppStack
-    AppStack -->|生成| AppCfn
-    AppStack -.参照.-> QualifierConfig
-    AppStack -.PassRole.-> ExecRole
-    AppStack -.検証.-> Aspects
-    DeployRole -->|デプロイ| AppCfn
+    AppConfig -.参照.-> Bootstrap
+    PBPolicy -.適用.-> AppResources
+    DenyPolicy -.保護.-> PBPolicy
     
-    AppCfn -.参照.-> AssetStorage
-    AppCfn -.assume.-> ExecRole
-    
-    Lambda --> LambdaRole
-    Lambda -.アクセス.-> S3Bucket
-    
-    style Admin fill:#FFFFFF
-    style AdminRole fill:#FFFFFF
-    style Dev fill:#FFFFFF
-    style DevRole fill:#FFFFFF
+    style LegendAdmin fill:#FFE5E5
+    style LegendDev fill:#E5F5FF
     style SetupStack fill:#FFE5E5
-    style SetupCfn fill:#FFE5E5
     style PBPolicy fill:#FFE5E5
     style DenyPolicy fill:#FFE5E5
     style Bootstrap fill:#FFE5E5
-    style BootstrapCfn fill:#FFE5E5
-    style AssetStorage fill:#FFE5E5
+    style BootstrapResources fill:#FFE5E5
+    style AppStack fill:#E5F5FF
+    style AppConfig fill:#E5F5FF
+    style AppResources fill:#E5F5FF
+```
+
+**図の説明:**
+1. 管理者がSetup StackでPermissions BoundaryとDeny Policyを作成
+2. 管理者がBootstrapを実行してリソース（S3/ECR/Roles）を作成
+3. 開発者がcdk.jsonでPermissions Boundary名を設定
+4. 開発者がApp Stackをデプロイ（CDKが自動的にPBを適用）
     style DeployRole fill:#FFE5E5
     style ExecRole fill:#FFE5E5
     style AppStack fill:#E5F5FF
@@ -219,44 +185,61 @@ graph LR
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 1: CDK Aspects（デプロイ前チェック）                   │
-│ 実行者: CDK CLI（開発者が cdk deploy 実行時）                 │
-├─────────────────────────────────────────────────────────────┤
-│ ✓ IAMロール検証（AdministratorAccess禁止）                    │
-│ ✓ S3セキュリティ検証（暗号化・バージョニング・パブリック）    │
-│ ✓ ワイルドカード権限の警告                                    │
-│ → 不合格の場合: デプロイ中断                                  │
-└─────────────────────────────────────────────────────────────┘
-                           ↓ デプロイ実行
-┌─────────────────────────────────────────────────────────────┐
-│ Layer 2: Qualifier（環境分離）                               │
-│ 設定者: 管理者（cdk.jsonに設定）                              │
+│ Layer 1: Qualifier（環境分離）                               │
+│ 設定者: 管理者（Bootstrap実行時に指定）                       │
 ├─────────────────────────────────────────────────────────────┤
 │ ✓ カスタムQualifier "pbdemo" を使用                          │
 │ ✓ Bootstrap環境を物理的に分離                                │
 │ ✓ 環境ごとに異なるS3/ECR/IAMリソース                         │
 │ → 環境間の干渉を防止                                         │
 └─────────────────────────────────────────────────────────────┘
-                           ↓ リソース作成
+                           ↓ デプロイ実行
 ┌─────────────────────────────────────────────────────────────┐
-│ Layer 3: Permissions Boundary（権限の上限）                  │
-│ 作成者: 管理者（初回デプロイ時に作成）                        │
-│ 適用者: CDK Aspects（全IAMロールに自動適用）                  │
+│ Layer 2: Permissions Boundary（権限の上限）                  │
+│ 設定方法: cdk.jsonで名前を指定（必須）                        │
+│ 適用: CDKが自動的にすべてのIAMロールに適用                    │
+├─────────────────────────────────────────────────────────────┤
+│ cdk.json設定例:                                               │
+│ "@aws-cdk/core:permissionsBoundary": {                       │
+│   "name": "CDKPermissionsBoundary"                           │
+│ }                                                             │
 ├─────────────────────────────────────────────────────────────┤
 │ 許可: S3, Lambda, CloudWatch Logs, DynamoDB                  │
 │ 拒否: IAM操作（CreatePolicy, AttachRolePolicy等）            │
 │ → 過度な権限付与を防止                                       │
 └─────────────────────────────────────────────────────────────┘
+                           ↓ リソース作成
+┌─────────────────────────────────────────────────────────────┐
+│ Layer 3: CDK Aspects（補助的検証）                           │
+│ 役割: CDKが自動生成するロールの追加検証                       │
+│ 実行: デプロイ前チェック                                      │
+├─────────────────────────────────────────────────────────────┤
+│ ✓ cdk.json未設定時の保険として機能                           │
+│ ✓ IAMロール検証（AdministratorAccess禁止）                    │
+│ ✓ S3セキュリティ検証（暗号化・バージョニング）                │
+│ ✓ ワイルドカード権限の警告                                    │
+│ → 不合格の場合: デプロイ中断                                  │
+└─────────────────────────────────────────────────────────────┘
                            ↓ 実行時
 ┌─────────────────────────────────────────────────────────────┐
 │ Layer 4: IAM Deny Policy（脱獄防止）                         │
-│ 作成者: 管理者（初回デプロイ時に作成）                        │
-│ 適用者: 開発者（必要なRoleにアタッチ）                        │
+│ 設定方法: 各ロールに明示的にアタッチ（必須）                  │
+│ 適用者: 開発者（コード内で指定）                              │
+├─────────────────────────────────────────────────────────────┤
+│ 強制する方法:                                                 │
+│ role.addManagedPolicy(                                        │
+│   iam.ManagedPolicy.fromManagedPolicyArn(                    │
+│     this, 'DenyPolicy', denyPolicyArn                        │
+│   )                                                           │
+│ );                                                            │
 ├─────────────────────────────────────────────────────────────┤
 │ ✓ Permissions Boundaryの削除・変更を拒否                     │
 │ ✓ セキュリティポリシーの変更を拒否                           │
 │ ✓ セキュリティグループの全開放(0.0.0.0/0)を拒否             │
 │ → 権限昇格（脱獄）を防止                                     │
+│                                                               │
+│ 注意: Permissions Boundaryと異なり自動適用されない           │
+│      各ロールに明示的にアタッチが必要                        │
 └─────────────────────────────────────────────────────────────┘
 ```
 
